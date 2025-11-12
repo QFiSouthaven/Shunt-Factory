@@ -1,0 +1,661 @@
+// components/shunt/Shunt.tsx
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import JSZip from 'jszip';
+import InputPanel from './InputPanel';
+import ControlPanel from './ControlPanel';
+import OutputPanel from './OutputPanel';
+import PromptLifecyclePanel from './PromptLifecyclePanel';
+import { performShunt, executeModularPrompt, gradeOutput } from '../../services/geminiService';
+import { ShuntAction, TokenUsage, PromptModuleKey, HistoryEntry } from '../../types';
+import { useValidation } from '../../hooks/useValidation';
+import { useTelemetry } from '../../context/TelemetryContext';
+import TabFooter from '../common/TabFooter';
+import { audioService } from '../../services/audioService';
+import { promptModules, getPromptForAction } from '../../services/prompts';
+import { useMailbox } from '../../context/MailboxContext';
+import { parseSkillPackagePlan } from '../../services/skillParser';
+import { useMCPContext } from '../../context/MCPContext';
+import { MCPConnectionStatus } from '../../types/mcp';
+import { logFrontendError, ErrorSeverity, parseApiError } from '../../utils/errorLogger';
+import Scratchpad from '../common/Scratchpad';
+import BulletinBoardPanel from './BulletinBoardPanel';
+import { useSubscription } from '../../context/SubscriptionContext';
+import { useSettings } from '../../context/SettingsContext';
+import { sanitizeInput } from '../../utils/security';
+import WorkflowGuide from './WorkflowGuide';
+import MobileViewSwitcher from './MobileViewSwitcher';
+import { useDebounce } from '../../hooks/useDebounce';
+
+const DEMO_TEXT = `### **Feature Specification: Senior Documentation Specialist Workflow**
+
+#### **1. Objective**
+
+This document outlines the functional requirements for a new user role, the **Senior Documentation Specialist**, and the implementation of a primary user interface element, the **"Create Documentation" button**. This feature is designed to streamline the documentation creation process by providing a dedicated entry point for authorized personnel, ensuring a structured and efficient workflow from initiation to publication.
+
+#### **2. User Role Definition: Senior Documentation Specialist**
+
+To properly contextualize the feature, we must first define the new user role and its associated permissions and responsibilities within the system.
+
+*   **Role Name:** Senior Documentation Specialist
+*   **Core Responsibility:** This user is responsible for the end-to-end lifecycle of technical and user-facing documentation. This includes creating new documents, editing existing content, managing version control, and publishing final articles.
+*   **Permissions:**
+    *   **Create:** Full ability to initiate new documentation artifacts of any type (e.g., User Guides, API References, Tutorials, Release Notes).
+    *   **Read/Write:** Unrestricted access to edit and update all documentation drafts and published articles.
+    *   **Delete:** Authority to archive or permanently delete documentation, subject to system-defined retention policies.
+    *   **Publish:** Ability to change the status of a document from "Draft" to "Published," making it visible to its intended audience.
+*   **Distinction from Other Roles:** This role is distinct from a "Contributor," who may only be able to suggest edits or work on assigned drafts, and a "Viewer," who has read-only access to published materials.
+
+#### **3. UI Element: The "Create Documentation" Button**
+
+This new button will serve as the primary call-to-action for the Senior Documentation Specialist to begin their workflow.
+
+*   **Label:** The button will be clearly labeled **"Create Documentation"**.
+*   **Location & Visibility:**
+    *   The button will be prominently placed on the main application dashboard or within the global navigation header for easy access.
+    *   **Conditional Rendering:** The button's visibility and state are strictly tied to user permissions.
+        *   **Visible and Enabled:** For any user logged in with the "Senior Documentation Specialist" role.
+        *   **Hidden or Disabled:** For all other user roles (e.g., Viewer, Contributor, Admin). If disabled, a tooltip on hover should state, "You do not have permission to create new documentation." Hiding the button is the preferred approach to maintain a clean UI for other users.
+*   **Styling:** The button should use the application's primary action color and style to signify its importance as a key workflow initiator. It may be accompanied by a "plus" or "document-add" icon for enhanced visual recognition.
+
+#### **4. Functional Workflow: From Click to Creation**
+
+The following sequence of events occurs when the "Create Documentation" button is clicked by an authorized user.
+
+**Step 1: Initiation**
+The Senior Documentation Specialist clicks the "Create Documentation" button.
+
+**Step 2: Present Creation Modal/Form**
+The system presents a modal window or navigates to a dedicated "Create New Document" page. This form will contain the following fields to gather essential metadata for the new document:
+
+*   **Document Title (Required):** A text input field for the document's primary title. The system must validate that this field is not empty.
+*   **Document Type (Required):** A dropdown menu to classify the content. This ensures proper categorization and application of templates.
+    *   *Examples:* \`User Guide\`, \`API Reference\`, \`Tutorial\`, \`Release Notes\`, \`FAQ\`.
+*   **Associated Product/Project (Optional but Recommended):** A searchable dropdown or tag field to link the documentation to a specific product, feature, or project within the system. This is crucial for organization and context.
+*   **Initial Template (Optional):** A dropdown allowing the user to start from a pre-defined structure.
+    *   *Examples:* \`Blank Document\`, \`Standard Article Template\`, \`API Endpoint Template\`. Selecting a template will pre-populate the editor with a foundational structure (e.g., headings, boilerplate text).
+
+**Step 3: Submission and System Processing**
+Upon the user filling out the required fields and clicking a "Create & Continue" or similar confirmation button:
+1.  **Client-Side Validation:** The form validates that all required fields are complete.
+2.  **Server-Side Action:** The system creates a new, unique documentation entity in the database with the provided metadata.
+3.  **Default State:** The new document is automatically assigned an initial status of **"Draft"**.
+4.  **Ownership:** The user who initiated the creation is assigned as the **"Owner"** or "Primary Author."
+
+**Step 4: Redirection to Editor**
+Immediately following successful creation, the user is automatically redirected to the rich-text editor interface for the newly created document. This provides a seamless transition from initiation to the act of writing, eliminating unnecessary clicks and navigation.
+
+**Step 5: User Confirmation**
+A non-intrusive success notification (e.g., a "toast" message) appears on the editor screen, confirming the action.
+*   *Example Message:* "Success! '*How to Configure the New Widget*' has been created. You can start writing now."`;
+
+const MAX_INPUT_LENGTH = 600000;
+const RATE_LIMIT_COUNT = 5;
+const RATE_LIMIT_WINDOW_MS = 10000; // 10 seconds
+
+interface BulletinDocument {
+    name: string;
+    content: string;
+}
+
+const Shunt: React.FC = () => {
+  const [inputText, setInputText] = useState(() => localStorage.getItem('shunt_inputText') || '');
+  const [outputText, setOutputText] = useState(() => localStorage.getItem('shunt_outputText') || '');
+  const [priority, setPriority] = useState(() => localStorage.getItem('shunt_priority') || 'Medium');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isEvolving, setIsEvolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeShunt, setActiveShunt] = useState<string | null>(null);
+  const [lastTokenUsage, setLastTokenUsage] = useState<TokenUsage | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-pro');
+  const [modulesForLastRun, setModulesForLastRun] = useState<string[] | null>(null);
+  const [showAmplifyX2, setShowAmplifyX2] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>(() => {
+    try {
+        const saved = localStorage.getItem('shunt_history');
+        return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [initialPrompt, setInitialPrompt] = useState(() => localStorage.getItem('shunt_initialPrompt') || '');
+  const [isScratchpadVisible, setIsScratchpadVisible] = useState(false);
+  const [scratchpadPosition, setScratchpadPosition] = useState({ x: 100, y: 100 });
+  const [isScratchpadMinimized, setIsScratchpadMinimized] = useState(false);
+  const [scratchpadContent, setScratchpadContent] = useState(() => localStorage.getItem('shunt_scratchpadContent') || '');
+  const [bulletinDocuments, setBulletinDocuments] = useState<BulletinDocument[]>(() => {
+      try {
+          const saved = localStorage.getItem('shunt_bulletinDocuments');
+          return saved ? JSON.parse(saved) : [];
+      } catch { return []; }
+  });
+  const [panelStates, setPanelStates] = useState({
+    bulletin: false, // false = not minimized
+    input: false,
+    output: false,
+    control: false,
+    lifecycle: false,
+  });
+  const [guideStatus, setGuideStatus] = useState<'visible' | 'fading' | 'hidden'>('visible');
+  const [mobileActiveView, setMobileActiveView] = useState<'input' | 'controls' | 'output'>('input');
+
+  const shuntContainerRef = useRef<HTMLDivElement>(null);
+  const isEvolvingRef = useRef(false);
+  const requestTimestamps = useRef<number[]>([]);
+
+  const { telemetryService, versionControlService } = useTelemetry();
+  const { deliverFiles } = useMailbox();
+  const { extensionApi, status: mcpStatus } = useMCPContext();
+  const { usage, tierDetails, incrementUsage } = useSubscription();
+  const { settings } = useSettings();
+
+
+  const { errors, isTouched, validate, markAsTouched, reset } = useValidation(
+    inputText,
+    { required: true, maxLength: MAX_INPUT_LENGTH },
+    { required: 'Input cannot be empty.', maxLength: `Input cannot exceed ${MAX_INPUT_LENGTH} characters.` }
+  );
+
+  const isShuntEmpty = !inputText && !outputText && !isLoading && !error && bulletinDocuments.length === 0;
+  
+  // Debounce state for localStorage persistence
+  const debouncedInputText = useDebounce(inputText, 500);
+  const debouncedOutputText = useDebounce(outputText, 500);
+  const debouncedPriority = useDebounce(priority, 500);
+  const debouncedHistory = useDebounce(history, 500);
+  const debouncedInitialPrompt = useDebounce(initialPrompt, 500);
+  const debouncedScratchpadContent = useDebounce(scratchpadContent, 500);
+  const debouncedBulletinDocuments = useDebounce(bulletinDocuments, 500);
+
+  // Persist state to localStorage using debounced values
+  useEffect(() => { localStorage.setItem('shunt_inputText', debouncedInputText); }, [debouncedInputText]);
+  useEffect(() => { localStorage.setItem('shunt_outputText', debouncedOutputText); }, [debouncedOutputText]);
+  useEffect(() => { localStorage.setItem('shunt_priority', debouncedPriority); }, [debouncedPriority]);
+  useEffect(() => { localStorage.setItem('shunt_history', JSON.stringify(debouncedHistory)); }, [debouncedHistory]);
+  useEffect(() => { localStorage.setItem('shunt_initialPrompt', debouncedInitialPrompt); }, [debouncedInitialPrompt]);
+  useEffect(() => { localStorage.setItem('shunt_scratchpadContent', debouncedScratchpadContent); }, [debouncedScratchpadContent]);
+  useEffect(() => { localStorage.setItem('shunt_bulletinDocuments', JSON.stringify(debouncedBulletinDocuments)); }, [debouncedBulletinDocuments]);
+  
+
+  useEffect(() => {
+    if (outputText && !isLoading && window.innerWidth < 1280) {
+        setMobileActiveView('output');
+    }
+  }, [outputText, isLoading]);
+
+  useEffect(() => {
+    if (isShuntEmpty) {
+        setGuideStatus('visible'); // Reset if it becomes empty again
+        const fadeTimer = setTimeout(() => {
+            setGuideStatus('fading');
+        }, 3000); // Start fading after 3 seconds
+
+        const hideTimer = setTimeout(() => {
+            setGuideStatus('hidden');
+        }, 4000); // Hide completely after another second (1s fade)
+
+        return () => {
+            clearTimeout(fadeTimer);
+            clearTimeout(hideTimer);
+        };
+    } else {
+        setGuideStatus('hidden');
+    }
+}, [isShuntEmpty]);
+
+  const togglePanel = (panel: keyof typeof panelStates) => {
+    setPanelStates(prev => ({ ...prev, [panel]: !prev[panel] }));
+    audioService.playSound('click');
+  };
+
+  const handleApiError = useCallback((e: any, telemetryContext: Record<string, any>) => {
+    logFrontendError(e, ErrorSeverity.High, telemetryContext);
+    
+    const userFriendlyMessage = parseApiError(e);
+
+    setError(userFriendlyMessage);
+    setShowAmplifyX2(false);
+    audioService.playSound('error');
+  }, []);
+
+  const checkRateLimit = useCallback(() => {
+      if (!settings.clientSideRateLimitingEnabled) return false;
+
+      const now = Date.now();
+      requestTimestamps.current = requestTimestamps.current.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+      
+      if (requestTimestamps.current.length >= RATE_LIMIT_COUNT) {
+          setError(`Rate limit exceeded. Please wait a moment before sending another request.`);
+          audioService.playSound('error');
+          return true;
+      }
+      
+      requestTimestamps.current.push(now);
+      return false;
+
+  }, [settings.clientSideRateLimitingEnabled]);
+
+  const resetChain = useCallback(() => {
+    setHistory([]);
+    setInitialPrompt('');
+  }, []);
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputText(event.target.value);
+     if (!isEvolvingRef.current) {
+        resetChain();
+    }
+  };
+  
+  const handleFileLoad = (text: string) => {
+    setInputText(text);
+    resetChain();
+  };
+
+  const getBulletinContext = useCallback(() => {
+    if (bulletinDocuments.length === 0) return undefined;
+    return bulletinDocuments
+      .map(doc => `--- Reference Document: ${doc.name} ---\n\n${doc.content}`)
+      .join('\n\n---\n\n');
+  }, [bulletinDocuments]);
+
+  const handleShunt = useCallback(async (action: ShuntAction | string, textToProcess: string = inputText) => {
+    // This is the primary entry point for all shunt actions.
+    if (tierDetails.shuntRuns !== 'unlimited' && usage.shuntRuns >= tierDetails.shuntRuns) {
+        setError("You've reached your monthly limit for Shunt runs. Please upgrade your plan in the Subscription tab.");
+        audioService.playSound('error');
+        return;
+    }
+    if (checkRateLimit()) return;
+
+    markAsTouched();
+    if (!validate() || isLoading) return;
+
+    setIsLoading(true);
+    setError(null);
+    setOutputText('');
+    setModulesForLastRun(null);
+    setShowAmplifyX2(false);
+    setActiveShunt(action);
+    audioService.playSound('send');
+    
+    if (history.length === 0) {
+        setInitialPrompt(textToProcess);
+    }
+    
+    try {
+        const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(textToProcess) : textToProcess;
+        const bulletinContext = getBulletinContext();
+
+        // For all actions, use the Gemini API.
+        const { resultText, tokenUsage } = await performShunt(sanitizedText, action as ShuntAction, selectedModel, bulletinContext, priority);
+
+        // --- Post-processing and UI updates ---
+        if (action === ShuntAction.BUILD_A_SKILL) {
+            const files = parseSkillPackagePlan(resultText);
+            if (files.length > 0) {
+                // (Existing BUILD_A_SKILL logic remains the same)
+                await deliverFiles(files);
+                const skillName = files[0].path.split('/')[0] || 'skill-package';
+                
+                if (mcpStatus === MCPConnectionStatus.Connected && extensionApi?.fs) {
+                    setOutputText(`MCP extension connected. Shunting skill '${skillName}' directly to your computer...`);
+                    await Promise.all(
+                        files.map(file => extensionApi.fs!.saveFile(file.path, file.content))
+                    );
+                    setOutputText(`✅ Skill package '${skillName}' shunted directly to your computer!\n\n${files.length} file(s) are now on your local filesystem and also available in your Mailbox.`);
+                } else {
+                    const zip = new JSZip();
+                    files.forEach(file => { zip.file(file.path, file.content); });
+                    const zipBlob = await zip.generateAsync({ type: 'blob' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(zipBlob);
+                    link.download = `${skillName}.zip`;
+                    link.click();
+                    URL.revokeObjectURL(link.href);
+                    setOutputText(`✅ Skill package generated successfully!\n\n${files.length} file(s) have been delivered to your Mailbox and downloaded as \`${skillName}.zip\`.\n\n(Tip: Connect the MCP Browser Extension to shunt files directly to your computer).`);
+                }
+                audioService.playSound('success');
+            } else {
+                setOutputText(`⚠️ Could not parse any files from the AI's response.\n\nThe raw output is shown below for debugging:\n\n---\n\n${resultText}`);
+                audioService.playSound('error');
+            }
+        } else {
+            setOutputText(resultText);
+            if (action === ShuntAction.AMPLIFY && resultText) {
+                setShowAmplifyX2(true);
+            }
+            audioService.playSound('receive');
+        }
+      
+        incrementUsage('shuntRuns');
+        setLastTokenUsage(tokenUsage);
+      
+        telemetryService?.recordEvent({
+            eventType: 'ai_response',
+            interactionType: 'shunt_action',
+            tab: 'Shunt',
+            userInput: textToProcess.substring(0, 200),
+            aiOutput: resultText.substring(0, 200),
+            outcome: 'success',
+            tokenUsage: tokenUsage ?? undefined,
+            modelUsed: tokenUsage.model,
+            customData: { action, priority }
+        });
+        versionControlService?.captureVersion('shunt_interaction', 'shunt_output', JSON.stringify({ input: textToProcess, output: resultText, action, model: tokenUsage.model, tokenUsage, priority }, null, 2), 'ai_response', `Shunt action: ${action}`);
+
+    } catch (e: any) {
+        const telemetryContext = { context: 'Shunt.handleShunt', action, selectedModel, priority };
+        handleApiError(e, telemetryContext);
+        telemetryService?.recordEvent({ eventType: 'ai_response', interactionType: 'shunt_action', tab: 'Shunt', outcome: 'error', customData: { action, priority, error: e.message || 'An unknown error occurred.' } });
+    } finally {
+        setIsLoading(false);
+        setActiveShunt(null);
+    }
+  }, [inputText, isLoading, validate, markAsTouched, telemetryService, selectedModel, versionControlService, deliverFiles, mcpStatus, extensionApi, history.length, getBulletinContext, usage, tierDetails, incrementUsage, checkRateLimit, settings.inputSanitizationEnabled, handleApiError, priority]);
+  
+  const handleAmplifyX2 = useCallback(async () => {
+    // This is Step 2: Taking the local model's output and sending it to Gemini.
+    if (!outputText || isLoading) return;
+    setInputText(outputText); // Put output back into input for user to see the context.
+    // Use the outputText as the text to process for the next stage.
+    await handleShunt(ShuntAction.AMPLIFY_X2, outputText);
+  }, [outputText, isLoading, handleShunt]);
+
+
+  const handleModularShunt = useCallback(async (modules: Set<PromptModuleKey>) => {
+    if (tierDetails.shuntRuns !== 'unlimited' && usage.shuntRuns >= tierDetails.shuntRuns) {
+        setError("You've reached your monthly limit for Shunt runs. Please upgrade your plan in the Subscription tab.");
+        audioService.playSound('error');
+        return;
+    }
+    if (checkRateLimit()) return;
+
+    markAsTouched();
+    if (!validate() || isLoading) {
+        return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setOutputText('');
+    setShowAmplifyX2(false);
+    setActiveShunt('Modular Prompt');
+    audioService.playSound('send');
+    
+    if (history.length === 0) {
+        setInitialPrompt(inputText);
+    }
+    
+    try {
+      const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(inputText) : inputText;
+      const bulletinContext = getBulletinContext();
+      const moduleNames = Array.from(modules).map(key => promptModules[key]?.name || key);
+      setModulesForLastRun(moduleNames);
+
+      const { resultText, tokenUsage } = await executeModularPrompt(sanitizedText, modules, bulletinContext, priority);
+      
+      setOutputText(resultText);
+      audioService.playSound('receive');
+      
+      incrementUsage('shuntRuns');
+      setLastTokenUsage(tokenUsage);
+      
+      telemetryService?.recordEvent({
+        eventType: 'ai_response',
+        interactionType: 'shunt_modular',
+        tab: 'Shunt',
+        userInput: inputText.substring(0, 200),
+        aiOutput: resultText.substring(0, 200),
+        outcome: 'success',
+        tokenUsage,
+        modelUsed: 'gemini-2.5-pro',
+        customData: { modules: Array.from(modules), priority }
+      });
+
+    } catch (e: any) {
+      const telemetryContext = {
+          context: 'Shunt.handleModularShunt',
+          modules: Array.from(modules),
+          priority,
+      };
+      handleApiError(e, telemetryContext);
+      telemetryService?.recordEvent({
+        eventType: 'ai_response',
+        interactionType: 'shunt_modular',
+        tab: 'Shunt',
+        outcome: 'error',
+        customData: { modules: Array.from(modules), priority, error: e.message || 'An unknown error occurred.' }
+      });
+    } finally {
+      setIsLoading(false);
+      setActiveShunt(null);
+    }
+  }, [inputText, isLoading, validate, markAsTouched, telemetryService, getBulletinContext, history.length, checkRateLimit, handleApiError, incrementUsage, settings.inputSanitizationEnabled, tierDetails.shuntRuns, usage.shuntRuns, priority]);
+
+  const handleEvolve = useCallback(async () => {
+    if (!outputText) return;
+    setIsEvolving(true);
+    isEvolvingRef.current = true;
+    try {
+        const { score } = await gradeOutput(outputText, history.length > 0 ? history[history.length-1].prompt : initialPrompt);
+        const newHistoryEntry: HistoryEntry = {
+            id: uuidv4(),
+            prompt: history.length > 0 ? history[history.length-1].output : initialPrompt,
+            output: outputText,
+            score: score,
+        };
+        setHistory(prev => [...prev, newHistoryEntry]);
+        setInputText(outputText);
+        setOutputText('');
+        setError(null);
+        setModulesForLastRun(null);
+    } catch (e: any) {
+        handleApiError(e, { context: 'Shunt.handleEvolve' });
+    } finally {
+        setIsEvolving(false);
+        setTimeout(() => { isEvolvingRef.current = false; }, 500);
+    }
+  }, [outputText, initialPrompt, history, handleApiError]);
+
+  const handleCombinedShunt = useCallback(async (draggedAction: ShuntAction, targetAction: ShuntAction) => {
+    if (isLoading) return;
+    
+    setIsLoading(true);
+    setError(null);
+    setOutputText('');
+    setActiveShunt(`${draggedAction} & ${targetAction}`);
+    audioService.playSound('send');
+    
+    try {
+        const firstPass = await performShunt(inputText, draggedAction, selectedModel, getBulletinContext(), priority);
+        const secondPass = await performShunt(firstPass.resultText, targetAction, selectedModel, getBulletinContext(), priority);
+
+        setOutputText(secondPass.resultText);
+        audioService.playSound('receive');
+        setLastTokenUsage({
+            prompt_tokens: firstPass.tokenUsage.prompt_tokens + secondPass.tokenUsage.prompt_tokens,
+            completion_tokens: firstPass.tokenUsage.completion_tokens + secondPass.tokenUsage.completion_tokens,
+            total_tokens: firstPass.tokenUsage.total_tokens + secondPass.tokenUsage.total_tokens,
+            model: selectedModel,
+        });
+
+    } catch (e: any) {
+        handleApiError(e, { context: 'Shunt.handleCombinedShunt', actions: [draggedAction, targetAction], priority });
+    } finally {
+        setIsLoading(false);
+        setActiveShunt(null);
+    }
+  }, [inputText, isLoading, selectedModel, handleApiError, getBulletinContext, priority]);
+  
+  const handleAttachScratchpad = useCallback((content: string) => {
+    if (!content.trim()) return;
+    const newDoc: BulletinDocument = {
+        name: `Scratchpad Note - ${new Date().toLocaleTimeString()}`,
+        content: content,
+    };
+    setBulletinDocuments(prev => [...prev, newDoc]);
+    setScratchpadContent('');
+    setIsScratchpadVisible(false);
+    audioService.playSound('success');
+  }, []);
+
+  return (
+    <div ref={shuntContainerRef} className="flex flex-col h-full relative">
+      {isShuntEmpty && guideStatus !== 'hidden' && <WorkflowGuide isFading={guideStatus === 'fading'} />}
+
+      <MobileViewSwitcher
+          activeView={mobileActiveView}
+          onViewChange={setMobileActiveView}
+          hasOutput={!!outputText}
+          hasError={!!error}
+          isLoading={isLoading}
+      />
+
+      <div className="flex-grow p-2 sm:p-4 md:p-6 overflow-hidden">
+        {/* Desktop Layout */}
+        <div className="hidden xl:grid xl:grid-cols-3 gap-6 h-full">
+            <div className="flex flex-col gap-6 overflow-y-auto">
+                <BulletinBoardPanel
+                    documents={bulletinDocuments}
+                    onUpdateDocuments={setBulletinDocuments}
+                    isMinimized={panelStates.bulletin}
+                    onToggleMinimize={() => togglePanel('bulletin')}
+                />
+                <InputPanel
+                    value={inputText}
+                    onChange={handleInputChange}
+                    onBlur={markAsTouched}
+                    onPasteDemo={() => { setInputText(DEMO_TEXT); resetChain(); }}
+                    onFileLoad={handleFileLoad}
+                    onClearFile={() => { setInputText(''); resetChain(); }}
+                    error={isTouched ? errors.required || errors.maxLength : null}
+                    maxLength={MAX_INPUT_LENGTH}
+                    isLoading={isLoading}
+                    onToggleScratchpad={() => setIsScratchpadVisible(!isScratchpadVisible)}
+                    isMinimized={panelStates.input}
+                    onToggleMinimize={() => togglePanel('input')}
+                    priority={priority}
+                    onPriorityChange={setPriority}
+                />
+            </div>
+            <div className="overflow-y-auto">
+                <ControlPanel
+                    onShunt={handleShunt}
+                    onModularShunt={handleModularShunt}
+                    onCombinedShunt={handleCombinedShunt}
+                    isLoading={isLoading}
+                    activeShunt={activeShunt}
+                    selectedModel={selectedModel}
+                    onModelChange={setSelectedModel}
+                    showAmplifyX2={showAmplifyX2}
+                    onAmplifyX2={handleAmplifyX2}
+                    usage={usage}
+                    tierDetails={tierDetails}
+                    isMinimized={panelStates.control}
+                    onToggleMinimize={() => togglePanel('control')}
+                />
+            </div>
+            <div className="flex flex-col overflow-y-auto">
+                <OutputPanel
+                    text={outputText}
+                    isLoading={isLoading}
+                    error={error}
+                    activeShunt={activeShunt}
+                    modulesUsed={modulesForLastRun}
+                    onEvolve={handleEvolve}
+                    isEvolving={isEvolving}
+                    isMinimized={panelStates.output}
+                    onToggleMinimize={() => togglePanel('output')}
+                />
+            </div>
+        </div>
+
+        {/* Mobile Layout */}
+        <div className="xl:hidden h-full overflow-y-auto">
+            {mobileActiveView === 'input' && (
+                <div className="flex flex-col gap-3 h-full">
+                    <BulletinBoardPanel
+                        documents={bulletinDocuments}
+                        onUpdateDocuments={setBulletinDocuments}
+                        isMinimized={panelStates.bulletin}
+                        onToggleMinimize={() => togglePanel('bulletin')}
+                    />
+                    <InputPanel
+                        value={inputText}
+                        onChange={handleInputChange}
+                        onBlur={markAsTouched}
+                        onPasteDemo={() => { setInputText(DEMO_TEXT); resetChain(); }}
+                        onFileLoad={handleFileLoad}
+                        onClearFile={() => { setInputText(''); resetChain(); }}
+                        error={isTouched ? errors.required || errors.maxLength : null}
+                        maxLength={MAX_INPUT_LENGTH}
+                        isLoading={isLoading}
+                        onToggleScratchpad={() => setIsScratchpadVisible(!isScratchpadVisible)}
+                        isMinimized={panelStates.input}
+                        onToggleMinimize={() => togglePanel('input')}
+                        priority={priority}
+                        onPriorityChange={setPriority}
+                    />
+                </div>
+            )}
+            {mobileActiveView === 'controls' && (
+                <ControlPanel
+                    onShunt={handleShunt}
+                    onModularShunt={handleModularShunt}
+                    onCombinedShunt={handleCombinedShunt}
+                    isLoading={isLoading}
+                    activeShunt={activeShunt}
+                    selectedModel={selectedModel}
+                    onModelChange={setSelectedModel}
+                    showAmplifyX2={showAmplifyX2}
+                    onAmplifyX2={handleAmplifyX2}
+                    usage={usage}
+                    tierDetails={tierDetails}
+                    isMinimized={panelStates.control}
+                    onToggleMinimize={() => togglePanel('control')}
+                />
+            )}
+            {mobileActiveView === 'output' && (
+                 <OutputPanel
+                    text={outputText}
+                    isLoading={isLoading}
+                    error={error}
+                    activeShunt={activeShunt}
+                    modulesUsed={modulesForLastRun}
+                    onEvolve={handleEvolve}
+                    isEvolving={isEvolving}
+                    isMinimized={panelStates.output}
+                    onToggleMinimize={() => togglePanel('output')}
+                />
+            )}
+        </div>
+      </div>
+
+      {/* Bottom Panel: Prompt Lifecycle */}
+      <div className="flex-shrink-0 p-4 md:px-6 md:pb-2">
+        <PromptLifecyclePanel
+            history={history}
+            initialPrompt={initialPrompt}
+            isMinimized={panelStates.lifecycle}
+            onToggleMinimize={() => togglePanel('lifecycle')}
+        />
+      </div>
+      
+      <Scratchpad
+        isVisible={isScratchpadVisible}
+        onClose={() => setIsScratchpadVisible(false)}
+        isMinimized={isScratchpadMinimized}
+        onToggleMinimize={() => setIsScratchpadMinimized(!isScratchpadMinimized)}
+        position={scratchpadPosition}
+        onDrag={setScratchpadPosition}
+        content={scratchpadContent}
+        onContentChange={setScratchpadContent}
+        boundsRef={shuntContainerRef}
+        onAttach={handleAttachScratchpad}
+      />
+      
+      <TabFooter />
+    </div>
+  );
+};
+
+export default Shunt;
