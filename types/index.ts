@@ -126,7 +126,7 @@ export interface MiaAlert {
 
 
 // New types for Foundry
-export type AgentName = 'Architect' | 'Refactor' | 'Security' | 'QA' | 'UX';
+export type AgentName = 'Architect' | 'Refactor' | 'Security' | 'QA' | 'UX' | 'DevOps' | 'Backend';
 export type AgentStatus = 'Idle' | 'Auditing' | 'Designing' | 'Reviewing' | 'Refining' | 'Done';
 export interface FoundryAgent {
     name: AgentName;

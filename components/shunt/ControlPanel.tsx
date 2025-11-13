@@ -45,6 +45,8 @@ interface ControlPanelProps {
   tierDetails: TierDetails;
   isMinimized?: boolean;
   onToggleMinimize?: () => void;
+  isChainMode: boolean;
+  onChainModeChange: (enabled: boolean) => void;
 }
 
 const shuntActionsConfig = [
@@ -79,7 +81,7 @@ interface PromptPreset {
 const PRESETS_STORAGE_KEY = 'aether-shunt-module-presets';
 
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ onShunt, onModularShunt, onCombinedShunt, isLoading, activeShunt, selectedModel, onModelChange, showAmplifyX2, onAmplifyX2, usage, tierDetails, isMinimized, onToggleMinimize }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ onShunt, onModularShunt, onCombinedShunt, isLoading, activeShunt, selectedModel, onModelChange, showAmplifyX2, onAmplifyX2, usage, tierDetails, isMinimized, onToggleMinimize, isChainMode, onChainModeChange }) => {
   const [selectedModules, setSelectedModules] = useState<Set<PromptModuleKey>>(new Set());
   const [presets, setPresets] = useState<PromptPreset[]>([]);
   const [selectedPresetName, setSelectedPresetName] = useState('custom');
@@ -274,7 +276,22 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onShunt, onModularShunt, on
                 </div>
             </div>
 
-            <div className="w-full h-px bg-gray-700/50 my-6"></div>
+            <div className="my-6 bg-gray-900/40 border border-gray-700/60 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                    <BranchingIcon className="w-6 h-6 text-cyan-400" />
+                    <h2 className="font-semibold text-gray-200 text-lg">Workflow Engine</h2>
+                </div>
+                <ToggleSwitch
+                    id="chain-mode-toggle"
+                    label="Chain Mode"
+                    checked={isChainMode}
+                    onChange={onChainModeChange}
+                    disabled={isLoading}
+                />
+                <p className="text-xs text-gray-500 pl-2 mt-2">
+                    Automatically feeds output back to the input for a continuous, iterative workflow.
+                </p>
+            </div>
 
             {/* Shunt Actions */}
             <div>

@@ -1,11 +1,13 @@
+
+
 import { GoogleGenAI, Chat, GenerateContentResponse, Type } from "@google/genai";
 import { ShuntAction, GeminiResponse, TokenUsage, ImplementationTask, PromptModuleKey } from '../types';
-import { getPromptForAction, promptModules } from './prompts';
+import { getPromptForAction, promptModules, constructModularPrompt } from './prompts';
 
 /**
  * A utility function that wraps an API call with a retry mechanism.
  * If the API call fails with a rate limit error (429), it will retry
- * the call with an exponential backoff delay.
+ * the call with an exponential backoff delay. It fails immediately on quota errors.
  * @param apiCall The async function to call.
  * @returns The result of the API call.
  */
@@ -19,13 +21,19 @@ const withRetries = async <T>(apiCall: () => Promise<T>): Promise<T> => {
         } catch (error: any) {
             const errorMessage = error.toString().toLowerCase();
             const isRateLimitError = errorMessage.includes('429') || errorMessage.includes('resource_exhausted');
+            const isQuotaError = errorMessage.includes('quota');
+
+            // If it's a non-retryable quota error, fail immediately.
+            if (isQuotaError) {
+                throw error;
+            }
             
             if (isRateLimitError && i < maxRetries - 1) {
                 console.warn(`Rate limit exceeded. Retrying in ${delay / 1000}s...`);
                 await new Promise(res => setTimeout(res, delay));
                 delay *= 2; // exponential backoff
             } else {
-                throw error; // Re-throw if it's not a rate limit error or retries are exhausted
+                throw error; // Re-throw if it's not a retryable rate limit error or retries are exhausted
             }
         }
     }
@@ -69,21 +77,7 @@ export const performShunt = async (text: string, action: ShuntAction, model: str
 };
 
 export const executeModularPrompt = async (text: string, modules: Set<PromptModuleKey>, context?: string, priority?: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    let fullPrompt = promptModules.CORE.content;
-    for (const key of modules) {
-        if (promptModules[key]) {
-            fullPrompt += `\n\n---\n\n${promptModules[key].content}`;
-        }
-    }
-    if (context) {
-        fullPrompt += `\n\n---\n\nReference Documents:\n${context}`;
-    }
-    
-    if (priority) {
-        fullPrompt += `\n\n---\n\n**Task Priority: ${priority}**\nThis priority level should guide the depth and speed of your response.`;
-    }
-
-    fullPrompt += `\n\n---\n\nUser Input:\n${text}`;
+    const fullPrompt = constructModularPrompt(text, modules, context, priority);
     
     const model = 'gemini-2.5-pro';
     const response = await callGeminiAPI(fullPrompt, model);
@@ -290,6 +284,27 @@ ${projectContext}
 ---
 `;
     const model = 'gemini-2.5-pro';
+    const response = await callGeminiAPI(prompt, model);
+    const resultText = response.text;
+    const tokenUsage = mapTokenUsage(response, model);
+    return { resultText, tokenUsage };
+};
+
+export const synthesizeDocuments = async (documentsContent: string, model: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+    const prompt = `You are a Solutions Expert Agent. Your task is to analyze a collection of disparate notes, code snippets, and documents provided by a user. Synthesize them into a single, cohesive, and well-structured markdown document.
+
+Your goal is to organize this information logically to help the user continue their work, whether it's refining a build plan, defining a schema, or clarifying a project goal. Identify the primary intent from the combined documents and structure the output around that central theme.
+
+- If the content seems to be about planning software, structure it as a project plan.
+- If it contains data definitions, structure it as a schema or data model.
+- If it's a mix of ideas, create logical sections and use headings to organize them.
+- Ensure the final output is a single, clean markdown (.md) file. Do not add any commentary outside of the markdown content itself.
+
+Here is the collection of documents to synthesize:
+---
+${documentsContent}
+---
+`;
     const response = await callGeminiAPI(prompt, model);
     const resultText = response.text;
     const tokenUsage = mapTokenUsage(response, model);

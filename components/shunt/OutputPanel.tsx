@@ -1,6 +1,6 @@
 import React from 'react';
 import Loader from '../Loader';
-import { CopyIcon, CheckIcon, ErrorIcon, CodeIcon, RedoIcon, MinusIcon, AmplifyIcon } from '../icons';
+import { CopyIcon, CheckIcon, ErrorIcon, CodeIcon, RedoIcon, MinusIcon, AmplifyIcon, BranchingIcon } from '../icons';
 import { ShuntAction } from '../../types';
 
 interface OutputPanelProps {
@@ -13,9 +13,10 @@ interface OutputPanelProps {
   isEvolving: boolean;
   isMinimized?: boolean;
   onToggleMinimize?: () => void;
+  isChainMode: boolean;
 }
 
-const OutputPanel: React.FC<OutputPanelProps> = ({ text, isLoading, error, activeShunt, modulesUsed, onEvolve, isEvolving, isMinimized, onToggleMinimize }) => {
+const OutputPanel: React.FC<OutputPanelProps> = ({ text, isLoading, error, activeShunt, modulesUsed, onEvolve, isEvolving, isMinimized, onToggleMinimize, isChainMode }) => {
   const [copied, setCopied] = React.useState(false);
   const [markdownCopied, setMarkdownCopied] = React.useState(false);
 
@@ -86,15 +87,22 @@ const OutputPanel: React.FC<OutputPanelProps> = ({ text, isLoading, error, activ
         
         {text && !isLoading && (
           <div className="absolute top-2 right-2 z-20 flex items-center gap-2">
-              <button
-                onClick={onEvolve}
-                disabled={isEvolving || isLoading}
-                aria-label="Grade output and feed back to input"
-                className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-md transition-all duration-200 bg-cyan-600/80 border-cyan-500 text-white shadow-lg hover:bg-cyan-600 hover:border-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                  {isEvolving ? <Loader /> : <RedoIcon className="w-4 h-4" />}
-                  <span>{isEvolving ? 'Evolving...' : 'Evolve'}</span>
-              </button>
+              {!isChainMode ? (
+                  <button
+                    onClick={onEvolve}
+                    disabled={isEvolving || isLoading}
+                    aria-label="Grade output and feed back to input"
+                    className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-md transition-all duration-200 bg-cyan-600/80 border-cyan-500 text-white shadow-lg hover:bg-cyan-600 hover:border-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                      {isEvolving ? <Loader /> : <RedoIcon className="w-4 h-4" />}
+                      <span>{isEvolving ? 'Evolving...' : 'Evolve'}</span>
+                  </button>
+              ) : (
+                <div title="Chain Mode is active: Output automatically feeds into the input panel." className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-md bg-fuchsia-900/50 border border-fuchsia-700/50 text-fuchsia-300 animate-pulse">
+                    <BranchingIcon className="w-4 h-4" />
+                    <span>Chain Active</span>
+                </div>
+              )}
               <button
                 onClick={handleCopyToMarkdown}
                 aria-label={markdownCopied ? 'Markdown copied' : 'Copy content as Markdown'}

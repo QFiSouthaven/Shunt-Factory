@@ -335,3 +335,23 @@ export const shuntActionDescriptions: Record<ShuntAction, string> = {
   [ShuntAction.GENERATE_ORACLE_QUERY]: 'Takes a simple topic and transforms it into a "god-tier" multi-disciplinary research prompt designed to elicit deep, comprehensive insights from an AI.',
   [ShuntAction.REFINE_PROMPT]: 'Enhances a user-provided prompt by adding structure, clarity, and specific instructions to improve the quality of the AI\'s response.',
 };
+
+export const constructModularPrompt = (text: string, modules: Set<PromptModuleKey>, context?: string, priority?: string): string => {
+    let fullPrompt = promptModules.CORE.content;
+    for (const key of modules) {
+        if (promptModules[key]) {
+            fullPrompt += `\n\n---\n\n${promptModules[key].content}`;
+        }
+    }
+    if (context) {
+        fullPrompt += `\n\n---\n\nReference Documents:\n${context}`;
+    }
+    
+    if (priority) {
+        fullPrompt += `\n\n---\n\n**Task Priority: ${priority}**\nThis priority level should guide the depth and speed of your response.`;
+    }
+
+    fullPrompt += `\n\n---\n\nUser Input:\n${protectAgainstPromptInjection(text)}`;
+
+    return fullPrompt;
+};

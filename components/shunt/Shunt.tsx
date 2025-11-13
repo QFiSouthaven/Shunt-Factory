@@ -6,13 +6,13 @@ import InputPanel from './InputPanel';
 import ControlPanel from './ControlPanel';
 import OutputPanel from './OutputPanel';
 import PromptLifecyclePanel from './PromptLifecyclePanel';
-import { performShunt, executeModularPrompt, gradeOutput } from '../../services/geminiService';
+import { performShunt, executeModularPrompt, gradeOutput, synthesizeDocuments } from '../../services/geminiService';
 import { ShuntAction, TokenUsage, PromptModuleKey, HistoryEntry } from '../../types';
 import { useValidation } from '../../hooks/useValidation';
 import { useTelemetry } from '../../context/TelemetryContext';
 import TabFooter from '../common/TabFooter';
 import { audioService } from '../../services/audioService';
-import { promptModules, getPromptForAction } from '../../services/prompts';
+import { getPromptForAction, constructModularPrompt } from '../../services/prompts';
 import { useMailbox } from '../../context/MailboxContext';
 import { parseSkillPackagePlan } from '../../services/skillParser';
 import { useMCPContext } from '../../context/MCPContext';
@@ -26,6 +26,8 @@ import { sanitizeInput } from '../../utils/security';
 import WorkflowGuide from './WorkflowGuide';
 import MobileViewSwitcher from './MobileViewSwitcher';
 import { useDebounce } from '../../hooks/useDebounce';
+import DocumentViewerModal from '../common/DocumentViewerModal';
+import { useLmStudio } from '../../hooks/useLmStudio';
 
 const DEMO_TEXT = `### **Feature Specification: Senior Documentation Specialist Workflow**
 
@@ -136,6 +138,13 @@ const Shunt: React.FC = () => {
   });
   const [guideStatus, setGuideStatus] = useState<'visible' | 'fading' | 'hidden'>('visible');
   const [mobileActiveView, setMobileActiveView] = useState<'input' | 'controls' | 'output'>('input');
+  const [viewingDocument, setViewingDocument] = useState<BulletinDocument | null>(null);
+  const [isChainMode, setIsChainMode] = useState(() => {
+    try {
+        const saved = localStorage.getItem('shunt_isChainMode');
+        return saved ? JSON.parse(saved) : false;
+    } catch { return false; }
+  });
 
   const shuntContainerRef = useRef<HTMLDivElement>(null);
   const isEvolvingRef = useRef(false);
@@ -146,6 +155,13 @@ const Shunt: React.FC = () => {
   const { extensionApi, status: mcpStatus } = useMCPContext();
   const { usage, tierDetails, incrementUsage } = useSubscription();
   const { settings } = useSettings();
+  const { callLmStudio, isLmStudioLoading, lmStudioError } = useLmStudio();
+
+  useEffect(() => {
+    if (lmStudioError) {
+        setError(lmStudioError);
+    }
+  }, [lmStudioError]);
 
 
   const { errors, isTouched, validate, markAsTouched, reset } = useValidation(
@@ -164,6 +180,7 @@ const Shunt: React.FC = () => {
   const debouncedInitialPrompt = useDebounce(initialPrompt, 500);
   const debouncedScratchpadContent = useDebounce(scratchpadContent, 500);
   const debouncedBulletinDocuments = useDebounce(bulletinDocuments, 500);
+  const debouncedIsChainMode = useDebounce(isChainMode, 500);
 
   // Persist state to localStorage using debounced values
   useEffect(() => { localStorage.setItem('shunt_inputText', debouncedInputText); }, [debouncedInputText]);
@@ -173,6 +190,7 @@ const Shunt: React.FC = () => {
   useEffect(() => { localStorage.setItem('shunt_initialPrompt', debouncedInitialPrompt); }, [debouncedInitialPrompt]);
   useEffect(() => { localStorage.setItem('shunt_scratchpadContent', debouncedScratchpadContent); }, [debouncedScratchpadContent]);
   useEffect(() => { localStorage.setItem('shunt_bulletinDocuments', JSON.stringify(debouncedBulletinDocuments)); }, [debouncedBulletinDocuments]);
+  useEffect(() => { localStorage.setItem('shunt_isChainMode', JSON.stringify(debouncedIsChainMode)); }, [debouncedIsChainMode]);
   
 
   useEffect(() => {
@@ -257,8 +275,43 @@ const Shunt: React.FC = () => {
       .join('\n\n---\n\n');
   }, [bulletinDocuments]);
 
+  const handleEvolve = useCallback(async () => {
+    if (!outputText) return;
+    setIsEvolving(true);
+    isEvolvingRef.current = true;
+    try {
+        const { score } = await gradeOutput(outputText, history.length > 0 ? history[history.length-1].prompt : initialPrompt);
+        const newHistoryEntry: HistoryEntry = {
+            id: uuidv4(),
+            prompt: history.length > 0 ? history[history.length-1].output : initialPrompt,
+            output: outputText,
+            score: score,
+        };
+        setHistory(prev => [...prev, newHistoryEntry]);
+        setInputText(outputText);
+        setOutputText('');
+        setError(null);
+        setModulesForLastRun(null);
+    } catch (e: any) {
+        handleApiError(e, { context: 'Shunt.handleEvolve' });
+    } finally {
+        setIsEvolving(false);
+        setTimeout(() => { isEvolvingRef.current = false; }, 500);
+    }
+  }, [outputText, initialPrompt, history, handleApiError]);
+
+  // Auto-evolve logic for Chain Mode
+  useEffect(() => {
+    if (isChainMode && outputText && !isLoading && !error) {
+        const chainTimeout = setTimeout(() => {
+            handleEvolve();
+        }, 1500); // 1.5-second delay for user to read output
+
+        return () => clearTimeout(chainTimeout);
+    }
+  }, [outputText, isChainMode, isLoading, error, handleEvolve]);
+
   const handleShunt = useCallback(async (action: ShuntAction | string, textToProcess: string = inputText) => {
-    // This is the primary entry point for all shunt actions.
     if (tierDetails.shuntRuns !== 'unlimited' && usage.shuntRuns >= tierDetails.shuntRuns) {
         setError("You've reached your monthly limit for Shunt runs. Please upgrade your plan in the Subscription tab.");
         audioService.playSound('error');
@@ -281,18 +334,15 @@ const Shunt: React.FC = () => {
         setInitialPrompt(textToProcess);
     }
     
-    try {
-        const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(textToProcess) : textToProcess;
-        const bulletinContext = getBulletinContext();
+    const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(textToProcess) : textToProcess;
+    const bulletinContext = getBulletinContext();
 
-        // For all actions, use the Gemini API.
+    try {
         const { resultText, tokenUsage } = await performShunt(sanitizedText, action as ShuntAction, selectedModel, bulletinContext, priority);
 
-        // --- Post-processing and UI updates ---
         if (action === ShuntAction.BUILD_A_SKILL) {
             const files = parseSkillPackagePlan(resultText);
             if (files.length > 0) {
-                // (Existing BUILD_A_SKILL logic remains the same)
                 await deliverFiles(files);
                 const skillName = files[0].path.split('/')[0] || 'skill-package';
                 
@@ -343,20 +393,37 @@ const Shunt: React.FC = () => {
         versionControlService?.captureVersion('shunt_interaction', 'shunt_output', JSON.stringify({ input: textToProcess, output: resultText, action, model: tokenUsage.model, tokenUsage, priority }, null, 2), 'ai_response', `Shunt action: ${action}`);
 
     } catch (e: any) {
-        const telemetryContext = { context: 'Shunt.handleShunt', action, selectedModel, priority };
-        handleApiError(e, telemetryContext);
-        telemetryService?.recordEvent({ eventType: 'ai_response', interactionType: 'shunt_action', tab: 'Shunt', outcome: 'error', customData: { action, priority, error: e.message || 'An unknown error occurred.' } });
+        const apiError = parseApiError(e);
+        if (settings.localModelFallbackEnabled && (apiError.includes('rate limit') || apiError.includes('429'))) {
+            try {
+                console.warn(`Gemini rate limit hit. Falling back to local model for action: ${action}.`);
+                setError(null);
+                setActiveShunt(`Fallback: ${action}`);
+                const promptForLocal = getPromptForAction(sanitizedText, action as ShuntAction, bulletinContext, priority);
+                const { resultText } = await callLmStudio(promptForLocal, settings.lmStudioEndpoint);
+                
+                setOutputText(`[LOCAL MODEL FALLBACK]\n\n---\n\n${resultText}`);
+                setLastTokenUsage(null);
+                audioService.playSound('receive');
+                telemetryService?.recordEvent({ eventType: 'ai_response', interactionType: 'shunt_action_fallback', tab: 'Shunt', outcome: 'success', modelUsed: 'local-model', customData: { action, priority } });
+            } catch (fallbackError: any) {
+                const telemetryContext = { context: 'Shunt.handleShunt.fallback', action, selectedModel, priority };
+                handleApiError(fallbackError, telemetryContext);
+            }
+        } else {
+            const telemetryContext = { context: 'Shunt.handleShunt', action, selectedModel, priority };
+            handleApiError(e, telemetryContext);
+            telemetryService?.recordEvent({ eventType: 'ai_response', interactionType: 'shunt_action', tab: 'Shunt', outcome: 'error', customData: { action, priority, error: e.message || 'An unknown error occurred.' } });
+        }
     } finally {
         setIsLoading(false);
         setActiveShunt(null);
     }
-  }, [inputText, isLoading, validate, markAsTouched, telemetryService, selectedModel, versionControlService, deliverFiles, mcpStatus, extensionApi, history.length, getBulletinContext, usage, tierDetails, incrementUsage, checkRateLimit, settings.inputSanitizationEnabled, handleApiError, priority]);
+  }, [inputText, isLoading, validate, markAsTouched, telemetryService, selectedModel, versionControlService, deliverFiles, mcpStatus, extensionApi, history.length, getBulletinContext, usage, tierDetails, incrementUsage, checkRateLimit, settings, handleApiError, priority, callLmStudio]);
   
   const handleAmplifyX2 = useCallback(async () => {
-    // This is Step 2: Taking the local model's output and sending it to Gemini.
     if (!outputText || isLoading) return;
-    setInputText(outputText); // Put output back into input for user to see the context.
-    // Use the outputText as the text to process for the next stage.
+    setInputText(outputText);
     await handleShunt(ShuntAction.AMPLIFY_X2, outputText);
   }, [outputText, isLoading, handleShunt]);
 
@@ -385,10 +452,11 @@ const Shunt: React.FC = () => {
         setInitialPrompt(inputText);
     }
     
+    const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(inputText) : inputText;
+    const bulletinContext = getBulletinContext();
+    const moduleNames = Array.from(modules).map(key => key);
+
     try {
-      const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(inputText) : inputText;
-      const bulletinContext = getBulletinContext();
-      const moduleNames = Array.from(modules).map(key => promptModules[key]?.name || key);
       setModulesForLastRun(moduleNames);
 
       const { resultText, tokenUsage } = await executeModularPrompt(sanitizedText, modules, bulletinContext, priority);
@@ -412,49 +480,34 @@ const Shunt: React.FC = () => {
       });
 
     } catch (e: any) {
-      const telemetryContext = {
-          context: 'Shunt.handleModularShunt',
-          modules: Array.from(modules),
-          priority,
-      };
-      handleApiError(e, telemetryContext);
-      telemetryService?.recordEvent({
-        eventType: 'ai_response',
-        interactionType: 'shunt_modular',
-        tab: 'Shunt',
-        outcome: 'error',
-        customData: { modules: Array.from(modules), priority, error: e.message || 'An unknown error occurred.' }
-      });
+        const apiError = parseApiError(e);
+        if (settings.localModelFallbackEnabled && (apiError.includes('rate limit') || apiError.includes('429'))) {
+            try {
+                console.warn(`Gemini rate limit hit. Falling back to local model for modular prompt: ${moduleNames.join(', ')}.`);
+                setError(null);
+                setActiveShunt(`Fallback: Modular Prompt`);
+
+                const fullPrompt = constructModularPrompt(sanitizedText, modules, bulletinContext, priority);
+                const { resultText } = await callLmStudio(fullPrompt, settings.lmStudioEndpoint);
+
+                setOutputText(`[LOCAL MODEL FALLBACK]\n\n---\n\n${resultText}`);
+                setLastTokenUsage(null);
+                audioService.playSound('receive');
+                telemetryService?.recordEvent({ eventType: 'ai_response', interactionType: 'shunt_modular_fallback', tab: 'Shunt', outcome: 'success', modelUsed: 'local-model', customData: { modules: moduleNames, priority } });
+            } catch (fallbackError: any) {
+                const telemetryContext = { context: 'Shunt.handleModularShunt.fallback', modules: moduleNames, priority };
+                handleApiError(fallbackError, telemetryContext);
+            }
+        } else {
+            const telemetryContext = { context: 'Shunt.handleModularShunt', modules: moduleNames, priority, };
+            handleApiError(e, telemetryContext);
+            telemetryService?.recordEvent({ eventType: 'ai_response', interactionType: 'shunt_modular', tab: 'Shunt', outcome: 'error', customData: { modules: moduleNames, priority, error: e.message || 'An unknown error occurred.' } });
+        }
     } finally {
       setIsLoading(false);
       setActiveShunt(null);
     }
-  }, [inputText, isLoading, validate, markAsTouched, telemetryService, getBulletinContext, history.length, checkRateLimit, handleApiError, incrementUsage, settings.inputSanitizationEnabled, tierDetails.shuntRuns, usage.shuntRuns, priority]);
-
-  const handleEvolve = useCallback(async () => {
-    if (!outputText) return;
-    setIsEvolving(true);
-    isEvolvingRef.current = true;
-    try {
-        const { score } = await gradeOutput(outputText, history.length > 0 ? history[history.length-1].prompt : initialPrompt);
-        const newHistoryEntry: HistoryEntry = {
-            id: uuidv4(),
-            prompt: history.length > 0 ? history[history.length-1].output : initialPrompt,
-            output: outputText,
-            score: score,
-        };
-        setHistory(prev => [...prev, newHistoryEntry]);
-        setInputText(outputText);
-        setOutputText('');
-        setError(null);
-        setModulesForLastRun(null);
-    } catch (e: any) {
-        handleApiError(e, { context: 'Shunt.handleEvolve' });
-    } finally {
-        setIsEvolving(false);
-        setTimeout(() => { isEvolvingRef.current = false; }, 500);
-    }
-  }, [outputText, initialPrompt, history, handleApiError]);
+  }, [inputText, isLoading, validate, markAsTouched, telemetryService, getBulletinContext, history.length, checkRateLimit, handleApiError, incrementUsage, settings, tierDetails.shuntRuns, usage.shuntRuns, priority, callLmStudio]);
 
   const handleCombinedShunt = useCallback(async (draggedAction: ShuntAction, targetAction: ShuntAction) => {
     if (isLoading) return;
@@ -486,6 +539,70 @@ const Shunt: React.FC = () => {
     }
   }, [inputText, isLoading, selectedModel, handleApiError, getBulletinContext, priority]);
   
+    const handleSynthesize = useCallback(async () => {
+    if (tierDetails.shuntRuns !== 'unlimited' && usage.shuntRuns >= tierDetails.shuntRuns) {
+        setError("You've reached your monthly limit for Shunt runs. Please upgrade your plan in the Subscription tab.");
+        audioService.playSound('error');
+        return;
+    }
+    if (checkRateLimit()) return;
+    if (bulletinDocuments.length === 0 || isLoading) return;
+
+    setIsLoading(true);
+    setError(null);
+    setOutputText('');
+    setModulesForLastRun(null);
+    setShowAmplifyX2(false);
+    setActiveShunt('Synthesize Notes');
+    audioService.playSound('send');
+
+    try {
+        const combinedContent = bulletinDocuments
+            .map(doc => `--- Document: ${doc.name} ---\n\n${doc.content}`)
+            .join('\n\n---\n\n');
+        
+        const { resultText, tokenUsage } = await synthesizeDocuments(combinedContent, selectedModel);
+
+        const newDocument: BulletinDocument = {
+            name: `synthesis-${new Date().toLocaleTimeString()}.md`,
+            content: resultText,
+        };
+
+        setBulletinDocuments(prev => [...prev, newDocument]);
+        setInputText(resultText); // Put the result in the input panel for immediate use
+        setOutputText(`✅ Synthesis complete!\n\nThe synthesized document has been added to the Bulletin Board and loaded into the Input Panel for you.`);
+        audioService.playSound('success');
+
+        incrementUsage('shuntRuns');
+        setLastTokenUsage(tokenUsage);
+
+        telemetryService?.recordEvent({
+            eventType: 'ai_response',
+            interactionType: 'synthesize_documents',
+            tab: 'Shunt',
+            aiOutput: resultText.substring(0, 200),
+            outcome: 'success',
+            tokenUsage: tokenUsage ?? undefined,
+            modelUsed: tokenUsage.model,
+            customData: { documentCount: bulletinDocuments.length }
+        });
+
+    } catch (e: any) {
+        const telemetryContext = { context: 'Shunt.handleSynthesize', selectedModel };
+        handleApiError(e, telemetryContext);
+        telemetryService?.recordEvent({ 
+            eventType: 'ai_response', 
+            interactionType: 'synthesize_documents', 
+            tab: 'Shunt', 
+            outcome: 'error', 
+            customData: { error: e.message || 'An unknown error occurred.' } 
+        });
+    } finally {
+        setIsLoading(false);
+        setActiveShunt(null);
+    }
+  }, [bulletinDocuments, isLoading, checkRateLimit, handleApiError, incrementUsage, selectedModel, telemetryService, tierDetails.shuntRuns, usage.shuntRuns]);
+
   const handleAttachScratchpad = useCallback((content: string) => {
     if (!content.trim()) return;
     const newDoc: BulletinDocument = {
@@ -498,6 +615,8 @@ const Shunt: React.FC = () => {
     audioService.playSound('success');
   }, []);
 
+  const combinedIsLoading = isLoading || isLmStudioLoading;
+
   return (
     <div ref={shuntContainerRef} className="flex flex-col h-full relative">
       {isShuntEmpty && guideStatus !== 'hidden' && <WorkflowGuide isFading={guideStatus === 'fading'} />}
@@ -507,7 +626,7 @@ const Shunt: React.FC = () => {
           onViewChange={setMobileActiveView}
           hasOutput={!!outputText}
           hasError={!!error}
-          isLoading={isLoading}
+          isLoading={combinedIsLoading}
       />
 
       <div className="flex-grow p-2 sm:p-4 md:p-6 overflow-hidden">
@@ -519,6 +638,9 @@ const Shunt: React.FC = () => {
                     onUpdateDocuments={setBulletinDocuments}
                     isMinimized={panelStates.bulletin}
                     onToggleMinimize={() => togglePanel('bulletin')}
+                    isLoading={combinedIsLoading}
+                    onSynthesize={handleSynthesize}
+                    onViewDocument={setViewingDocument}
                 />
                 <InputPanel
                     value={inputText}
@@ -529,7 +651,7 @@ const Shunt: React.FC = () => {
                     onClearFile={() => { setInputText(''); resetChain(); }}
                     error={isTouched ? errors.required || errors.maxLength : null}
                     maxLength={MAX_INPUT_LENGTH}
-                    isLoading={isLoading}
+                    isLoading={combinedIsLoading}
                     onToggleScratchpad={() => setIsScratchpadVisible(!isScratchpadVisible)}
                     isMinimized={panelStates.input}
                     onToggleMinimize={() => togglePanel('input')}
@@ -542,7 +664,7 @@ const Shunt: React.FC = () => {
                     onShunt={handleShunt}
                     onModularShunt={handleModularShunt}
                     onCombinedShunt={handleCombinedShunt}
-                    isLoading={isLoading}
+                    isLoading={combinedIsLoading}
                     activeShunt={activeShunt}
                     selectedModel={selectedModel}
                     onModelChange={setSelectedModel}
@@ -552,12 +674,14 @@ const Shunt: React.FC = () => {
                     tierDetails={tierDetails}
                     isMinimized={panelStates.control}
                     onToggleMinimize={() => togglePanel('control')}
+                    isChainMode={isChainMode}
+                    onChainModeChange={setIsChainMode}
                 />
             </div>
             <div className="flex flex-col overflow-y-auto">
                 <OutputPanel
                     text={outputText}
-                    isLoading={isLoading}
+                    isLoading={combinedIsLoading}
                     error={error}
                     activeShunt={activeShunt}
                     modulesUsed={modulesForLastRun}
@@ -565,6 +689,7 @@ const Shunt: React.FC = () => {
                     isEvolving={isEvolving}
                     isMinimized={panelStates.output}
                     onToggleMinimize={() => togglePanel('output')}
+                    isChainMode={isChainMode}
                 />
             </div>
         </div>
@@ -578,6 +703,9 @@ const Shunt: React.FC = () => {
                         onUpdateDocuments={setBulletinDocuments}
                         isMinimized={panelStates.bulletin}
                         onToggleMinimize={() => togglePanel('bulletin')}
+                        isLoading={combinedIsLoading}
+                        onSynthesize={handleSynthesize}
+                        onViewDocument={setViewingDocument}
                     />
                     <InputPanel
                         value={inputText}
@@ -588,7 +716,7 @@ const Shunt: React.FC = () => {
                         onClearFile={() => { setInputText(''); resetChain(); }}
                         error={isTouched ? errors.required || errors.maxLength : null}
                         maxLength={MAX_INPUT_LENGTH}
-                        isLoading={isLoading}
+                        isLoading={combinedIsLoading}
                         onToggleScratchpad={() => setIsScratchpadVisible(!isScratchpadVisible)}
                         isMinimized={panelStates.input}
                         onToggleMinimize={() => togglePanel('input')}
@@ -602,7 +730,7 @@ const Shunt: React.FC = () => {
                     onShunt={handleShunt}
                     onModularShunt={handleModularShunt}
                     onCombinedShunt={handleCombinedShunt}
-                    isLoading={isLoading}
+                    isLoading={combinedIsLoading}
                     activeShunt={activeShunt}
                     selectedModel={selectedModel}
                     onModelChange={setSelectedModel}
@@ -612,12 +740,14 @@ const Shunt: React.FC = () => {
                     tierDetails={tierDetails}
                     isMinimized={panelStates.control}
                     onToggleMinimize={() => togglePanel('control')}
+                    isChainMode={isChainMode}
+                    onChainModeChange={setIsChainMode}
                 />
             )}
             {mobileActiveView === 'output' && (
                  <OutputPanel
                     text={outputText}
-                    isLoading={isLoading}
+                    isLoading={combinedIsLoading}
                     error={error}
                     activeShunt={activeShunt}
                     modulesUsed={modulesForLastRun}
@@ -625,6 +755,7 @@ const Shunt: React.FC = () => {
                     isEvolving={isEvolving}
                     isMinimized={panelStates.output}
                     onToggleMinimize={() => togglePanel('output')}
+                    isChainMode={isChainMode}
                 />
             )}
         </div>
@@ -653,6 +784,14 @@ const Shunt: React.FC = () => {
         onAttach={handleAttachScratchpad}
       />
       
+      {viewingDocument && (
+        <DocumentViewerModal
+            isOpen={!!viewingDocument}
+            onClose={() => setViewingDocument(null)}
+            document={viewingDocument}
+        />
+      )}
+
       <TabFooter />
     </div>
   );

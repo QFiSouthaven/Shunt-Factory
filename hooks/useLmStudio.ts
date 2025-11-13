@@ -1,9 +1,6 @@
 // hooks/useLmStudio.ts
 import { useState, useCallback } from 'react';
 
-// Default endpoint for LM Studio's local server
-const LM_STUDIO_ENDPOINT = 'http://localhost:1234/v1/chat/completions';
-
 interface LmStudioResponse {
   resultText: string;
 }
@@ -12,12 +9,19 @@ export const useLmStudio = () => {
     const [isLmStudioLoading, setIsLoading] = useState(false);
     const [lmStudioError, setLmStudioError] = useState<string | null>(null);
 
-    const callLmStudio = useCallback(async (prompt: string): Promise<LmStudioResponse> => {
+    const callLmStudio = useCallback(async (prompt: string, endpoint: string): Promise<LmStudioResponse> => {
         setIsLoading(true);
         setLmStudioError(null);
 
+        if (!endpoint) {
+            const errorMsg = 'LM Studio endpoint is not configured in settings.';
+            setLmStudioError(errorMsg);
+            setIsLoading(false);
+            throw new Error(errorMsg);
+        }
+
         try {
-            const response = await fetch(LM_STUDIO_ENDPOINT, {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -31,7 +35,7 @@ export const useLmStudio = () => {
             });
 
             if (!response.ok) {
-                throw new Error(`LM Studio server responded with status: ${response.status}. Make sure the server is running and accessible.`);
+                throw new Error(`LM Studio server responded with status: ${response.status}. Make sure the server is running and accessible at the configured endpoint.`);
             }
 
             const data = await response.json();
@@ -48,8 +52,9 @@ export const useLmStudio = () => {
             const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
             // Provide a user-friendly error message
             if (errorMessage.includes('Failed to fetch')) {
-                 setLmStudioError('Could not connect to LM Studio. Please ensure the local server is running on http://localhost:1234.');
-                 throw new Error('Could not connect to LM Studio. Please ensure the local server is running on http://localhost:1234.');
+                 const friendlyError = `Could not connect to LM Studio at ${endpoint}. Please ensure the local server is running and the endpoint is configured correctly in Settings.`;
+                 setLmStudioError(friendlyError);
+                 throw new Error(friendlyError);
             }
             setLmStudioError(errorMessage);
             throw error; // Re-throw to be caught by the calling function

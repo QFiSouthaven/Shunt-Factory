@@ -17,7 +17,7 @@ interface ProjectFile {
     content: string;
 }
 
-const AGENT_NAMES: AgentName[] = ['Architect', 'Refactor', 'Security', 'QA', 'UX'];
+const AGENT_NAMES: AgentName[] = ['Architect', 'Refactor', 'Security', 'QA', 'UX', 'DevOps', 'Backend'];
 
 const initialAgents: FoundryAgent[] = AGENT_NAMES.map(name => ({
     name,
@@ -95,7 +95,9 @@ const Foundry: React.FC = () => {
                 name === 'Refactor' ? 'code quality and maintainability' : 
                 name === 'Security' ? 'security and compliance' :
                 name === 'QA' ? 'quality assurance and testability' :
-                'user experience and interface design';
+                name === 'UX' ? 'user experience and interface design' :
+                name === 'DevOps' ? 'infrastructure as code (IaC), CI/CD, and deployment' :
+                'backend microservices, APIs, and databases';
             const prompt = `You are the ${name} agent. Your specialty is ${specialty}. Audit the following project goal from your unique perspective, using the provided project context. Identify key considerations and risks. Provide a one-paragraph summary.\n\nPROJECT GOAL: "${goal}"\n\nPROJECT CONTEXT:\n---\n${projectContext}\n---`;
             
             try {

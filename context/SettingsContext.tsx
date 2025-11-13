@@ -13,6 +13,9 @@ interface AppSettings {
     inputSanitizationEnabled: boolean;
     promptInjectionGuardEnabled: boolean;
     clientSideRateLimitingEnabled: boolean;
+    // New Fallback Settings
+    localModelFallbackEnabled: boolean;
+    lmStudioEndpoint: string;
 }
 
 const defaultSettings: AppSettings = {
@@ -27,6 +30,9 @@ const defaultSettings: AppSettings = {
     inputSanitizationEnabled: true,
     promptInjectionGuardEnabled: true,
     clientSideRateLimitingEnabled: true,
+    // Default fallback to on
+    localModelFallbackEnabled: true,
+    lmStudioEndpoint: 'http://localhost:1234/v1/chat/completions',
 };
 
 const SETTINGS_STORAGE_KEY = 'ai-shunt-settings';
