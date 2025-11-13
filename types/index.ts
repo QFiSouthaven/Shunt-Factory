@@ -70,7 +70,7 @@ export interface HistoryEntry {
     score: number;
 }
 
-export type MissionControlTabKey = 'shunt' | 'weaver' | 'foundry' | 'ui_builder' | 'chat' | 'orchestrator' | 'image_analysis' | 'terminal' | 'oraculum' | 'documentation' | 'settings' | 'anthropic_chat' | 'developers' | 'subscription' | 'serendipity_engine' | 'chronicle' | 'deploy' | 'tool_for_ai';
+export type MissionControlTabKey = 'shunt' | 'weaver' | 'foundry' | 'ui_builder' | 'chat' | 'orchestrator' | 'image_analysis' | 'terminal' | 'oraculum' | 'documentation' | 'settings' | 'anthropic_chat' | 'developers' | 'subscription' | 'serendipity_engine' | 'chronicle' | 'deploy' | 'tool_for_ai' | 'framework';
 
 export interface MissionControlTab {
     key: MissionControlTabKey;
@@ -162,4 +162,18 @@ export interface Job {
     result: string | null;
     startTime: number;
     endTime: number | null;
+}
+
+// --- New types for Evolve Workflow ---
+export interface EvolveStep {
+  id: string;
+  action: ShuntAction;
+}
+
+export interface EvolveResult {
+  stepId: string;
+  action: ShuntAction;
+  output: string;
+  status: 'success' | 'error';
+  error?: string;
 }

@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect, useCa
 import { v4 as uuidv4 } from 'uuid';
 import { MiaMessage, MiaAlert, GeminiResponse } from '../types';
 import { appEventBus } from '../lib/eventBus';
-import { getMiaChatResponse, getMiaErrorAnalysis, generateCodeFixPlan } from '../services/miaService';
+import { getMiaChatResponse, getMiaErrorAnalysis, generateCodeFixPlan } from '../features/mia/MiaService';
 import { logFrontendError, ErrorSeverity, parseApiError } from '../utils/errorLogger';
 import { useMCPContext } from './MCPContext';
 import { INITIAL_DOCUMENTATION } from './constants';

@@ -326,3 +326,19 @@ export const CpuChipIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M8.25 21v-1.5M21 15.75h-1.5M15.75 3v1.5M15.75 21v-1.5m-7.5 0v-1.5m7.5-15v1.5m-7.5-1.5v1.5M3 15.75h1.5m1.5-12H3m12 0h-1.5m-1.5 18h-1.5m-1.5-1.5v-1.5m1.5 1.5v1.5m0-1.5v-1.5m0 1.5v1.5m0-1.5v-1.5m0 0v-1.5m-1.5 0h1.5m-1.5 0h-1.5m-1.5 0h-1.5m3 0h1.5m-4.5 0h1.5m3 0h-1.5m-1.5 0h1.5m3 0h-1.5m-1.5 0h1.5m3 0h-1.5m-1.5 0h1.5m0 0h1.5m0-1.5v-1.5m0-1.5v-1.5m0-1.5v-1.5m0 0v-1.5m0 0V9m0 0v-1.5m-1.5 0H9m-1.5 0H6m1.5 0h-1.5m3 0h1.5M9 9h1.5m1.5 1.5v-1.5m1.5 0v-1.5m0 0v-1.5m1.5 0v1.5m0 0v1.5m0 1.5v-1.5m0 0v1.5m-1.5 0v1.5m-1.5 0v1.5M9 15v-1.5m-1.5 0v1.5m1.5 0v-1.5m1.5 0v-1.5M9 9v1.5m3 0v1.5m-1.5 0v-1.5m0 0v1.5m1.5 0v-1.5" />
     </svg>
 );
+// FIX: Added PlayIcon, StopIcon, and ArrowPathIcon for use in the SimulationPanel.
+export const PlayIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+    </svg>
+);
+export const StopIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+    </svg>
+);
+export const ArrowPathIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001a10.5 10.5 0 01-1.919 5.864m-4.015-5.864a10.5 10.5 0 00-1.919 5.864m-4.015-5.864v-.001a10.5 10.5 0 00-1.919 5.864m-4.015-5.864H3.75a10.5 10.5 0 001.919 5.864m7.843-8.732a10.5 10.5 0 011.919 5.864m0 0a10.5 10.5 0 01-1.919 5.864m0-11.728a10.5 10.5 0 01-1.919 5.864m-7.843 2.91a10.5 10.5 0 01-1.919-5.864m0 0a10.5 10.5 0 011.919-5.864m0 0a10.5 10.5 0 01-1.919-5.864m0 0a10.5 10.5 0 011.919-5.864" />
+    </svg>
+);

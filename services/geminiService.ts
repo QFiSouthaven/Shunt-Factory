@@ -1,13 +1,15 @@
 
-
 import { GoogleGenAI, Chat, GenerateContentResponse, Type } from "@google/genai";
+// FIX: Added PromptModuleKey to the import from types.
 import { ShuntAction, GeminiResponse, TokenUsage, ImplementationTask, PromptModuleKey } from '../types';
-import { getPromptForAction, promptModules, constructModularPrompt } from './prompts';
+// FIX: Added constructModularPrompt to the import from prompts.
+import { getPromptForAction, constructModularPrompt } from './prompts';
+import { logFrontendError, ErrorSeverity } from "../utils/errorLogger";
 
 /**
  * A utility function that wraps an API call with a retry mechanism.
  * If the API call fails with a rate limit error (429), it will retry
- * the call with an exponential backoff delay. It fails immediately on quota errors.
+ * the call with an exponential backoff delay.
  * @param apiCall The async function to call.
  * @returns The result of the API call.
  */
@@ -20,26 +22,22 @@ const withRetries = async <T>(apiCall: () => Promise<T>): Promise<T> => {
             return await apiCall();
         } catch (error: any) {
             const errorMessage = error.toString().toLowerCase();
-            const isRateLimitError = errorMessage.includes('429') || errorMessage.includes('resource_exhausted');
-            const isQuotaError = errorMessage.includes('quota');
+            const isRateLimitError = errorMessage.includes('429') || errorMessage.includes('resource_exhausted') || errorMessage.includes('rate limit');
 
-            // If it's a non-retryable quota error, fail immediately.
-            if (isQuotaError) {
-                throw error;
-            }
-            
             if (isRateLimitError && i < maxRetries - 1) {
-                console.warn(`Rate limit exceeded. Retrying in ${delay / 1000}s...`);
-                await new Promise(res => setTimeout(res, delay));
-                delay *= 2; // exponential backoff
+                console.warn(`Rate limit hit. Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2; // Exponential backoff
             } else {
-                throw error; // Re-throw if it's not a retryable rate limit error or retries are exhausted
+                // Last attempt or not a rate limit error, re-throw it
+                throw error;
             }
         }
     }
-    // This should not be reachable, but typescript needs a return path
-    throw new Error("Exhausted retries for API call.");
+    // This line should be unreachable due to the throw in the catch block on the final iteration
+    throw new Error("An unexpected error occurred within the retry logic.");
 };
+
 
 const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenUsage => {
     return {
@@ -50,263 +48,508 @@ const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenU
     };
 };
 
-const callGeminiAPI = async (prompt: string, modelName: string, jsonResponseSchema?: any): Promise<GenerateContentResponse> => {
-    return withRetries(async () => {
+// FIX: Updated the function signature to accept optional context and priority arguments to match its usage in Shunt.tsx.
+export const performShunt = async (
+    text: string, 
+    action: ShuntAction, 
+    modelName: string,
+    context?: string,
+    priority?: string
+): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+  try {
+    const apiCall = async () => {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const config: any = {};
-        if (jsonResponseSchema) {
-            config.responseMimeType = "application/json";
-            config.responseSchema = jsonResponseSchema;
-        }
+        const prompt = getPromptForAction(text, action, context, priority);
+        
+        const isComplexAction = action === ShuntAction.MAKE_ACTIONABLE || action === ShuntAction.BUILD_A_SKILL;
+        const config = (isComplexAction && modelName.includes('pro')) ? { thinkingConfig: { thinkingBudget: 32768 } } : {};
 
         const response = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
-            config
+            config,
         });
-        return response;
+        
+        const resultText = response.text;
+        const tokenUsage = mapTokenUsage(response, modelName);
+        
+        if (action === ShuntAction.FORMAT_JSON || action === ShuntAction.MAKE_ACTIONABLE || action === ShuntAction.GENERATE_VAM_PRESET) {
+            let cleanedText = resultText.trim();
+            if (cleanedText.startsWith('```')) {
+                const firstNewLineIndex = cleanedText.indexOf('\n');
+                cleanedText = firstNewLineIndex !== -1 ? cleanedText.substring(firstNewLineIndex + 1) : cleanedText.substring(3);
+            }
+            if (cleanedText.endsWith('```')) {
+                cleanedText = cleanedText.substring(0, cleanedText.length - 3);
+            }
+            return { resultText: cleanedText.trim(), tokenUsage };
+        }
+
+        return { resultText, tokenUsage };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'performShunt Gemini API call' });
+    throw new Error('Failed to get a response from the AI. Please check your connection and try again.');
+  }
+};
+
+// FIX: Added the missing 'executeModularPrompt' function.
+export const executeModularPrompt = async (
+  text: string,
+  modules: Set<PromptModuleKey>,
+  context?: string,
+  priority?: string
+): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+  const model = 'gemini-2.5-pro'; // Modular prompts are complex, use Pro
+  const prompt = constructModularPrompt(text, modules, context, priority);
+  try {
+    const apiCall = async () => {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingBudget: 32768 },
+        }
+      });
+      return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'executeModularPrompt Gemini API call' });
+    throw new Error('Failed to execute modular prompt.');
+  }
+};
+
+// FIX: Added the missing 'gradeOutput' function.
+export const gradeOutput = async (output: string, originalPrompt: string): Promise<{ score: number }> => {
+  const model = 'gemini-2.5-flash';
+  const prompt = `You are a quality assurance AI. Your task is to grade an AI's output based on an original prompt.
+Provide a score from -10 (very bad) to +10 (excellent).
+Your response MUST be ONLY the score, like this: "Score: 8".
+
+--- ORIGINAL PROMPT ---
+${originalPrompt}
+
+--- AI OUTPUT TO GRADE ---
+${output}
+`;
+
+  try {
+    const apiCall = async () => {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+      });
+      const resultText = response.text;
+      const scoreMatch = resultText.match(/Score:\s*(-?\d+)/);
+      const score = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
+      return { score };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'gradeOutput Gemini API call' });
+    throw new Error('Failed to grade AI output.');
+  }
+};
+
+// FIX: Added the missing 'synthesizeDocuments' function.
+export const synthesizeDocuments = async (
+  combinedContent: string,
+  modelName: string
+): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+  const prompt = `You are an expert research assistant. Your task is to synthesize the following collection of documents into a single, cohesive, and well-structured markdown document.
+Identify the main themes, connections, and key takeaways from all the provided texts. The final output should be a summary that integrates all the information logically.
+
+--- DOCUMENTS ---
+${combinedContent}
+---
+`;
+  try {
+    const apiCall = async () => {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: prompt,
+      });
+      return { resultText: response.text, tokenUsage: mapTokenUsage(response, modelName) };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'synthesizeDocuments Gemini API call' });
+    throw new Error('Failed to synthesize documents.');
+  }
+};
+
+// FIX: Added the missing 'generateRawText' function.
+export const generateRawText = async (prompt: string, modelName: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+  try {
+    const apiCall = async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const config = modelName.includes('pro') ? { thinkingConfig: { thinkingBudget: 32768 } } : {};
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+            config,
+        });
+        return { resultText: response.text, tokenUsage: mapTokenUsage(response, modelName) };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'generateRawText Gemini API call' });
+    throw new Error('Failed to generate raw text from AI.');
+  }
+};
+
+// FIX: Added the missing 'generateOraculumInsights' function.
+export const generateOraculumInsights = async (eventsJson: string): Promise<string> => {
+  const model = 'gemini-2.5-pro';
+  const prompt = `You are Oraculum, a senior data analyst AI. Analyze the following stream of telemetry events from the Aether Shunt application.
+Provide a concise, actionable report in Markdown format.
+
+The report should include:
+1.  **High-Level Summary:** What is the user's primary activity pattern? Are they exploring, encountering errors, or successfully using features?
+2.  **Key Observations:** Identify 2-3 significant patterns or events (e.g., repeated use of a specific action, frequent errors, high token usage).
+3.  **Potential User Intent:** Based on the event sequence, what is the user likely trying to achieve?
+4.  **Actionable Insight:** Suggest one concrete improvement or intervention. (e.g., "The user is repeatedly using 'Amplify'. Suggest they try the 'Amplify x2' feature for more powerful results.").
+
+**Telemetry Event Stream (JSON):**
+---
+${eventsJson}
+---
+`;
+  const apiCall = async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+          thinkingConfig: { thinkingBudget: 32768 },
+      }
     });
+    return response.text;
+  };
+
+  try {
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'generateOraculumInsights Gemini API call' });
+    throw new Error('Failed to generate insights from telemetry.');
+  }
 };
 
-export const performShunt = async (text: string, action: ShuntAction, model: string, context?: string, priority?: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    const prompt = getPromptForAction(text, action, context, priority);
-    const response = await callGeminiAPI(prompt, model);
-    const resultText = response.text;
-    const tokenUsage = mapTokenUsage(response, model);
-    return { resultText, tokenUsage };
+export const generateOrchestratorReport = async (prompt: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+  try {
+    const apiCall = async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const model = 'gemini-2.5-flash';
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+        });
+        return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'generateOrchestratorReport Gemini API call' });
+    throw new Error('Failed to generate the analysis report. Please try again.');
+  }
 };
 
-export const executeModularPrompt = async (text: string, modules: Set<PromptModuleKey>, context?: string, priority?: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    const fullPrompt = constructModularPrompt(text, modules, context, priority);
-    
-    const model = 'gemini-2.5-pro';
-    const response = await callGeminiAPI(fullPrompt, model);
-    const resultText = response.text;
-    const tokenUsage = mapTokenUsage(response, model);
-    return { resultText, tokenUsage };
+export const generatePerformanceReport = async (metrics: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+  const prompt = `You are an expert Senior Site Reliability Engineer (SRE). Analyze the following performance metrics from a web application and provide a concise, actionable report in Markdown format.
+
+The report should include:
+1.  **Overall Health Assessment:** A brief summary (Good, Fair, Poor) and why.
+2.  **Key Observations:** Bullet points highlighting significant findings (e.g., high latency in a specific API, low cache hit ratio).
+3.  **Potential Bottlenecks:** Identify the most likely performance bottlenecks based on the data.
+4.  **Actionable Recommendations:** Suggest 2-3 specific, high-impact actions to improve performance.
+
+**Performance Metrics Snapshot:**
+---
+${metrics}
+---
+`;
+  try {
+    const apiCall = async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const model = 'gemini-2.5-flash';
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+        });
+        return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'generatePerformanceReport Gemini API call' });
+    throw new Error('Failed to generate the performance report. Please try again.');
+  }
 };
 
-export const generateDevelopmentPlan = async (goal: string, context: string): Promise<GeminiResponse> => {
-    const prompt = `
-**Goal:**
-${goal}
+export const getAIChatResponseWithContextFlag = async (prompt: string): Promise<{ answer: string; isContextRelated: boolean; tokenUsage: TokenUsage }> => {
+  const responseSchema = {
+    type: Type.OBJECT,
+    properties: {
+      answer: {
+        type: Type.STRING,
+        description: "The textual answer to the user's question."
+      },
+      isContextRelated: {
+        type: Type.BOOLEAN,
+        description: "A boolean flag that is TRUE if the provided context was used to generate the answer, and FALSE if the answer was generated from general knowledge because the context was not relevant."
+      }
+    },
+    required: ['answer', 'isContextRelated']
+  };
+
+  const model = 'gemini-2.5-flash';
+
+  try {
+    const apiCall = async () => {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema,
+        },
+      });
+
+      const tokenUsage = mapTokenUsage(response, model);
+      const jsonText = response.text;
+      const parsedResponse = JSON.parse(jsonText);
+
+      return {
+        answer: parsedResponse.answer || "Sorry, I couldn't generate a proper response.",
+        isContextRelated: parsedResponse.isContextRelated ?? true, // Default to true to avoid showing the notice on parsing errors
+        tokenUsage,
+      };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'getAIChatResponseWithContextFlag Gemini API call' });
+    throw new Error('Failed to get a response from the AI. The response may have been malformed JSON.');
+  }
+};
+
+const implementationTaskSchema = {
+    type: Type.OBJECT,
+    properties: {
+        filePath: { type: Type.STRING, description: "The full path to the file that needs to be modified." },
+        description: { type: Type.STRING, description: "A one-sentence description of the change." },
+        details: { type: Type.STRING, description: "Precise, step-by-step details for a coding AI to follow. Use for descriptive plans." },
+        newContent: { type: Type.STRING, description: "The full, complete new content for the file. Use for direct code fixes." },
+    },
+    required: ['filePath', 'description']
+};
+
+
+export async function generateDevelopmentPlan(goal: string, context: string): Promise<GeminiResponse> {
+  const prompt = `
+You are an expert software architect acting as a 'Strategy & Task Formulation' AI. Your role is to assist a user in managing the development of this application, the 'AI Content Shunt'.
+
+You will be given a high-level development goal from the user and the project's context from a 'GEMINI_CONTEXT.md' file.
+
+Your task is to deconstruct the goal into a clear, actionable development plan for a code-generating AI based on the schema provided.
 
 **Project Context:**
 ---
 ${context}
 ---
 
-Based on the goal and project context, generate a complete development plan.`;
-    const model = 'gemini-2.5-pro';
-    const responseSchema = {
-        type: Type.OBJECT,
-        properties: {
-            clarifyingQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-            architecturalProposal: { type: Type.STRING },
-            implementationTasks: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        filePath: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        details: { type: Type.STRING },
-                    },
-                    required: ['filePath', 'description']
-                }
-            },
-            testCases: { type: Type.ARRAY, items: { type: Type.STRING } }
-        },
-        required: ['implementationTasks']
-    };
-    const response = await callGeminiAPI(prompt, model, responseSchema);
-    const parsedResponse = JSON.parse(response.text);
-    const tokenUsage = mapTokenUsage(response, model);
-    return { ...parsedResponse, tokenUsage };
-};
-
-export const analyzeImage = async (prompt: string, image: { base64Data: string; mimeType: string }): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = 'gemini-2.5-pro';
-    const imagePart = {
-        inlineData: {
-            data: image.base64Data,
-            mimeType: image.mimeType,
-        },
-    };
-    const textPart = { text: prompt };
-
-    const response = await ai.models.generateContent({
-        model,
-        contents: { parts: [textPart, imagePart] },
-    });
-
-    const resultText = response.text;
-    const tokenUsage = mapTokenUsage(response, model);
-    return { resultText, tokenUsage };
-};
-
-export const gradeOutput = async (output: string, prompt: string): Promise<{ score: number }> => {
-    const gradingPrompt = `You are a prompt engineering expert. Below is an original prompt and the AI's output. Your task is to grade the output on a scale of -10 to +10 based on its quality, relevance, accuracy, and how well it fulfills the prompt's intent. Compare it to what real-world expert knowledge on the topic would be. Only return a JSON object with a single key "score".
-
-PROMPT:
+**User's Goal:**
 ---
-${prompt}
+${goal}
 ---
 
-OUTPUT:
----
-${output}
----
+**Instructions:**
+1.  **Ask Clarifying Questions:** Identify any ambiguities and list questions to help the user refine the goal.
+2.  **Propose an Architecture:** Briefly explain the technical approach in simple terms, referencing existing files and components.
+3.  **Define Implementation Tasks:** Create a list of specific, atomic tasks for the coding AI. Each task must include the full file path to be modified, a description of the change, and precise details in the 'details' field. **DO NOT** use the 'newContent' field.
+4.  **Suggest Test Cases:** Provide a list of simple, verifiable test cases to confirm the feature works as expected.
 `;
-    const model = 'gemini-2.5-flash';
+
     const responseSchema = {
-        type: Type.OBJECT,
-        properties: {
-            score: { 
-                type: Type.NUMBER,
-                description: 'A grade from -10 to +10.'
-            },
+    type: Type.OBJECT,
+    properties: {
+        clarifyingQuestions: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "Questions to help the user refine the goal. If none, return an empty array."
         },
-        required: ['score']
+        architecturalProposal: {
+            type: Type.STRING,
+            description: "The technical approach to implementing the goal, referencing existing files and components."
+        },
+        implementationTasks: {
+            type: Type.ARRAY,
+            items: implementationTaskSchema,
+            description: "A list of specific, atomic tasks for the coding AI."
+        },
+        testCases: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "A list of simple, verifiable test cases to confirm the feature works as expected."
+        }
+    },
+    required: ['clarifyingQuestions', 'architecturalProposal', 'implementationTasks', 'testCases']
+  };
+
+  try {
+    const apiCall = async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const model = 'gemini-2.5-pro';
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema,
+                thinkingConfig: { thinkingBudget: 32768 },
+            },
+        });
+
+        const tokenUsage = mapTokenUsage(response, model);
+        const jsonText = response.text;
+        const parsedResponse = JSON.parse(jsonText);
+
+        return {
+            clarifyingQuestions: [],
+            architecturalProposal: '',
+            implementationTasks: [],
+            testCases: [],
+            ...parsedResponse,
+            tokenUsage,
+        };
     };
-    const response = await callGeminiAPI(gradingPrompt, model, responseSchema);
-    const parsed = JSON.parse(response.text);
-    if (typeof parsed.score === 'number') {
-        return { score: parsed.score };
-    }
-    throw new Error("AI response did not contain a valid score.");
-};
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateDevelopmentPlan Gemini API call' });
+    throw new Error('Failed to generate the development plan. The AI may have returned an invalid response or malformed JSON.');
+  }
+}
 
-export const generateOraculumInsights = async (eventsJson: string): Promise<string> => {
-    const prompt = `You are a senior data analyst with deep expertise in product-market fit and user behavior for AI-powered developer tools. Your task is to analyze a raw stream of telemetry events from the "Aether Shunt" application and extract high-value, non-obvious business insights.
-
-**Core Principles:**
-- **Think like a strategist:** Don't just summarize. Connect the dots. What do these events *imply* about user intent, product value, and market trends?
-- **Identify Economic Signals:** Focus on events that indicate monetization potential, churn risk, and power-user behavior.
-- **Find Behavioral Patterns:** What workflows are users creating? Which features are most and least engaging? What predicts success or failure?
-- **Be Actionable:** Frame your insights as concrete recommendations for the product, marketing, or sales teams.
-
-**Raw Telemetry Event Stream (JSON):**
----
-${eventsJson}
----
-
-**Your Analysis (in Markdown):**
-
-### 1. Executive Summary (The "So What?")
-A single, high-impact paragraph summarizing the most critical insight from this data.
-
-### 2. Key Insights & Observations
-- **Insight 1:** [Describe a significant pattern or correlation. e.g., "Users who combine 'Build a Skill' with 'Format as JSON' are 3x more likely to become power users."]
-  - **Supporting Data:** [Cite specific event types or data points.]
-  - **Recommendation:** [Suggest a concrete action. e.g., "Create a tutorial or template that combines these two features to accelerate user activation."]
-- **Insight 2:** [Describe another pattern, perhaps related to churn or feature abandonment.]
-  - **Supporting Data:** [...]
-  - **Recommendation:** [...]
-- **Insight 3 (Non-Obvious):** [Present a counter-intuitive or unexpected finding.]
-  - **Supporting Data:** [...]
-  - **Recommendation:** [...]
-
-### 3. Emerging Trends
-Based on this snapshot, what new user behaviors or market opportunities might be emerging? What should the team watch closely?
-`;
-    const model = 'gemini-2.5-pro';
-    const response = await callGeminiAPI(prompt, model);
-    return response.text;
-};
-
-export const generateRawText = async (prompt: string, model: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    const response = await callGeminiAPI(prompt, model);
-    const resultText = response.text;
-    const tokenUsage = mapTokenUsage(response, model);
-    return { resultText, tokenUsage };
-};
-
+// FIX: Added the missing 'generateProjectTome' function.
 export const generateProjectTome = async (projectContext: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+    const model = 'gemini-2.5-pro';
     const prompt = `
-You are a senior technical writer and software architect tasked with creating a comprehensive, book-like document about a software project. This "Project Tome" should be so detailed that a new developer could become an expert on the codebase just by reading it.
+You are a "Tome Weaver" AI. Your purpose is to create a definitive, all-encompassing "Project Tome" from a provided codebase. This document should serve as the ultimate source of truth for any developer, new or old, to understand the project's architecture, purpose, and implementation details.
 
-Analyze the entire project's source code provided below and generate a complete project guide in Markdown format.
+Structure the output in Markdown with the following sections, injecting the placeholder strings exactly as written where specified.
 
-**Your output MUST follow this structure precisely:**
+# Project Tome: [Infer a suitable project name from context]
 
-# Project Tome: The Definitive Guide to [Infer Project Name]
+## 1. Executive Summary
+A high-level, one-paragraph overview of the application's purpose and its core functionality.
 
-## Chapter 1: Introduction & Vision
-- **Project Purpose:** What problem does this application solve? Who is the target user?
-- **Core Philosophy:** What are the guiding principles behind the project's design? (e.g., modularity, performance, user experience).
-
-## Chapter 2: Architectural Deep-Dive
-- **High-Level Overview:** Describe the main architectural pattern (e.g., component-based, context-driven state).
-- **Technology Stack:** List all major frameworks, libraries, and tools used.
-- **Folder & File Structure:** Explain the purpose of each top-level directory.
+## 2. File Structure Overview
+A visual representation of the project's file tree.
 [INSERT_FILE_STRUCTURE_DIAGRAM]
 
-## Chapter 3: Visual Component Hierarchy
-- **Overview:** Explain how the main UI components are nested and interact.
-- **Component Diagram:** A visual representation of the component tree.
+## 3. Architectural Deep Dive
+- **Core Philosophy:** Describe the main architectural patterns (e.g., component-based, service-oriented, context for state).
+- **Data Flow:** Explain how data moves through the app. Use a primary user workflow as an example.
+- **State Management:** Detail the global state strategy (React Contexts) and local state usage.
+
+## 4. Component Hierarchy Diagram
+A Mermaid.js graph visualizing how the components are interconnected.
 [INSERT_COMPONENT_HIERARCHY_DIAGRAM]
 
-## Chapter 4: Component Reference
-For each major component (e.g., MissionControl, Shunt, Weaver, MiaAssistant, Chat, etc.), provide a detailed section:
-- ### \`[ComponentName]\`
-  - **Responsibility:** What is this component's primary role?
-  - **State Management:** Describe its internal state (useState, useRef).
-  - **Key Functions:** Detail its main functions and what they do.
-  - **Interactions:** How does it connect to services, contexts, or child components?
+## 5. Service Layer Breakdown
+Describe each major service file (e.g., \`geminiService.ts\`, \`telemetry.service.ts\`) and its key responsibilities and functions.
 
-## Chapter 5: State Management & Data Flow
-- **Global State (Contexts):** Detail each React Context (SettingsContext, TelemetryContext, MiaContext, etc.). Explain what state it holds and its purpose.
-- **Data Flow Example:** Choose a key user workflow (like performing a Shunt action) and describe the step-by-step data flow from user input to UI update.
-
-## Chapter 6: Services & External APIs
-- **Service Layer:** Describe the purpose of the \`services\` directory.
-- For each service file (e.g., \`geminiService.ts\`, \`miaService.ts\`, \`telemetry.service.ts\`):
-  - ### \`[ServiceName].ts\`
-    - **Purpose:** What is its responsibility?
-    - **Key Functions:** List and explain the primary functions it exports.
-    - **API Interactions:** Detail calls made to external APIs (like Google's Gemini API).
-
-## Chapter 7: Security & Utilities
-- **Security Measures:** Explain the purpose of files like \`utils/security.ts\`.
-- **Error Handling:** Describe the global error handling strategy (\`utils/errorLogger.ts\`).
-- **Custom Hooks:** Detail any custom hooks used for reusable logic.
-
-## Chapter 8: Conclusion
-- **Summary:** Briefly summarize the project's current state.
-- **Future Direction:** Suggest potential next steps or areas for improvement based on the current architecture.
+## 6. Key Data Structures
+Explain the most important TypeScript types and interfaces from the \`types/\` directory.
 
 ---
 **PROJECT SOURCE CODE:**
----
 ${projectContext}
 ---
 `;
-    const model = 'gemini-2.5-pro';
-    const response = await callGeminiAPI(prompt, model);
-    const resultText = response.text;
-    const tokenUsage = mapTokenUsage(response, model);
-    return { resultText, tokenUsage };
+
+    try {
+        const apiCall = async () => {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    thinkingConfig: { thinkingBudget: 32768 },
+                }
+            });
+            return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+        };
+        return await withRetries(apiCall);
+    } catch (error) {
+        logFrontendError(error, ErrorSeverity.High, { context: 'generateProjectTome Gemini API call' });
+        throw new Error('Failed to generate Project Tome.');
+    }
 };
 
-export const synthesizeDocuments = async (documentsContent: string, model: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    const prompt = `You are a Solutions Expert Agent. Your task is to analyze a collection of disparate notes, code snippets, and documents provided by a user. Synthesize them into a single, cohesive, and well-structured markdown document.
+export const analyzeImage = async (
+  prompt: string,
+  image: { base64Data: string; mimeType: string }
+): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+  try {
+    const apiCall = async () => {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const model = 'gemini-2.5-flash';
 
-Your goal is to organize this information logically to help the user continue their work, whether it's refining a build plan, defining a schema, or clarifying a project goal. Identify the primary intent from the combined documents and structure the output around that central theme.
+      const imagePart = {
+        inlineData: {
+          data: image.base64Data,
+          mimeType: image.mimeType,
+        },
+      };
+      
+      const enhancedPrompt = `
+You are an expert art director and 3D character artist providing a detailed analysis of the attached image.
 
-- If the content seems to be about planning software, structure it as a project plan.
-- If it contains data definitions, structure it as a schema or data model.
-- If it's a mix of ideas, create logical sections and use headings to organize them.
-- Ensure the final output is a single, clean markdown (.md) file. Do not add any commentary outside of the markdown content itself.
+First, respond directly and thoroughly to the user's request.
 
-Here is the collection of documents to synthesize:
+Then, if the image contains a character, creature, or object suitable for a 3D model, add the following two sections to the end of your analysis, formatted exactly in markdown:
+
+**8. Technical Considerations (for 3D Artists):**
+*   **Topology:** Describe the ideal topology for the subject. Emphasize clean, animation-ready quad topology for smooth deformations during rigging and animation.
+*   **UVs:** Detail the necessary UV mapping approach. Specify the need for well-organized, non-overlapping UV maps for all distinct parts of the model (e.g., body, head, hair, clothing).
+*   **Texture Maps:** List the required texture maps for a PBR workflow. Include Diffuse/Albedo, Normal, Roughness, and Specular maps. Mention the benefit of Subsurface Scattering (SSS) maps for any organic surfaces like skin.
+*   **Rigging:** Outline key considerations for rigging. Mention the importance of designing with clear joint placement and weight painting in mind for effective rigging, including the need for facial blend shapes for expressions if applicable.
+
+**9. Virt-a-Mate Preset (JSON):**
+*   **Instructions:** Based on the visual characteristics of the character in the image, generate a complete JSON preset file in the Virt-a-Mate (VAM) format.
+*   **Output:** Your output for this section must be a single, well-formed JSON object inside a JSON markdown block. Do not add any explanatory text outside the JSON.
+*   **Structure:** The JSON should define the character's appearance and properties, emulating the structure of a VAM preset. Include key sections within the main "storables" array for the "geometry" id: "clothing", "hair", "morphs" (this is critical for face/body shape), "textures" (with placeholder URLs like 'author.pack:/path/to/texture.jpg'), and other relevant "storables" for skin, eyes, and physics.
+
 ---
-${documentsContent}
----
-`;
-    const response = await callGeminiAPI(prompt, model);
-    const resultText = response.text;
-    const tokenUsage = mapTokenUsage(response, model);
-    return { resultText, tokenUsage };
+**User's Request:** ${prompt}
+      `;
+
+      const textPart = {
+        text: enhancedPrompt,
+      };
+
+      const response = await ai.models.generateContent({
+        model,
+        contents: { parts: [imagePart, textPart] },
+      });
+
+      return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+    };
+    return await withRetries(apiCall);
+  } catch (error) {
+    logFrontendError(error, ErrorSeverity.High, { context: 'analyzeImage Gemini API call' });
+    throw new Error('Failed to analyze the image. Please try again.');
+  }
+};
+
+export const startChat = (history?: { role: string, parts: { text: string }[] }[]): Chat => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    return ai.chats.create({
+        model: 'gemini-2.5-flash',
+        history: history
+    });
 };

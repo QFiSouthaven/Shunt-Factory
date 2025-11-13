@@ -3,7 +3,7 @@ import React, { useState, useCallback, lazy, Suspense, useEffect } from 'react';
 import {
     SparklesIcon, BrainIcon, BookIcon, HistoryIcon,
     ChatBubbleLeftRightIcon, PhotoIcon, DocumentIcon, Cog6ToothIcon, StarIcon,
-    TerminalIcon, GlobeAltIcon, BranchingIcon, ServerStackIcon, MenuIcon, DeveloperIcon
+    TerminalIcon, GlobeAltIcon, BranchingIcon, ServerStackIcon, MenuIcon, DeveloperIcon, CpuChipIcon
 } from '../icons';
 import { MissionControlTab, MissionControlTabKey } from '../../types';
 import Loader from '../Loader';
@@ -29,12 +29,14 @@ const Terminal = lazy(() => import('../terminal/Terminal'));
 const Chronicle = lazy(() => import('../chronicle/Chronicle'));
 const Deploy = lazy(() => import('../deploy/Deploy'));
 const ToolforAI = lazy(() => import('../tool_for_ai/ToolforAI'));
+const Framework = lazy(() => import('../framework/Framework'));
 
 
 const tabs: MissionControlTab[] = [
     { key: 'shunt', label: 'Shunt', icon: <SparklesIcon className="w-5 h-5" />, component: Shunt },
     { key: 'weaver', label: 'Weaver', icon: <BrainIcon className="w-5 h-5" />, component: Weaver },
     { key: 'foundry', label: 'Foundry', icon: <BranchingIcon className="w-5 h-5" />, component: Foundry },
+    { key: 'framework', label: 'Framework', icon: <CpuChipIcon className="w-5 h-5" />, component: Framework },
     { key: 'deploy', label: 'Deploy', icon: <ServerStackIcon className="w-5 h-5" />, component: Deploy },
     { key: 'chat', label: 'Chat', icon: <ChatBubbleLeftRightIcon className="w-5 h-5" />, component: Chat },
     { key: 'image_analysis', label: 'Image Analysis', icon: <PhotoIcon className="w-5 h-5" />, component: ImageAnalysis },

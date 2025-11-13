@@ -1,7 +1,15 @@
 // services/prompts.ts
 
+import React from 'react';
 import { ShuntAction, PromptModuleKey } from '../types';
 import { protectAgainstPromptInjection } from '../utils/security';
+import { 
+    BookIcon, CodeIcon, EditIcon, JsonIcon, KeywordsIcon, SmileIcon, 
+    TieIcon, SparklesIcon, AmplifyIcon, BrainIcon, FeatherIcon, 
+    JsonToTextIcon, ActionableIcon, PuzzlePieceIcon, PhotoIcon, 
+    EntityIcon, DocumentChartBarIcon, BranchingIcon, GlobeAltIcon
+} from '../components/icons';
+
 
 export const promptModules: Record<PromptModuleKey, { name: string; description: string; content: string }> = {
   [PromptModuleKey.CORE]: {
@@ -48,6 +56,32 @@ Core Protocols:
 - Refresh: If Green = red then ~null error Refresh is a high-priority meta-command that triggers a hard reset of the current analytical state and a re-evaluation from foundational axioms.`
   }
 };
+
+// FIX: Replaced JSX with React.createElement to allow icon components to be used in a .ts file without causing syntax errors.
+export const shuntActionsConfig: { action: ShuntAction; icon: React.ReactNode; group: string }[] = [
+  { action: ShuntAction.SUMMARIZE, icon: React.createElement(BookIcon, { className: "w-5 h-5" }), group: 'Content' },
+  { action: ShuntAction.AMPLIFY, icon: React.createElement(AmplifyIcon, { className: "w-5 h-5" }), group: 'Content' },
+  { action: ShuntAction.MAKE_ACTIONABLE, icon: React.createElement(ActionableIcon, { className: "w-5 h-5" }), group: 'Content' },
+  { action: ShuntAction.BUILD_A_SKILL, icon: React.createElement(PuzzlePieceIcon, { className: "w-5 h-5" }), group: 'Content' },
+  { action: ShuntAction.MY_COMMAND, icon: React.createElement(BranchingIcon, { className: "w-5 h-5" }), group: 'Content' },
+  { action: ShuntAction.GENERATE_ORACLE_QUERY, icon: React.createElement(GlobeAltIcon, { className: "w-5 h-5" }), group: 'Content' },
+  { action: ShuntAction.EXPLAIN_LIKE_IM_FIVE, icon: React.createElement(CodeIcon, { className: "w-5 h-5" }), group: 'Explanation' },
+  { action: ShuntAction.EXPLAIN_LIKE_A_SENIOR, icon: React.createElement(BrainIcon, { className: "w-5 h-5" }), group: 'Explanation' },
+  { action: ShuntAction.EXTRACT_KEYWORDS, icon: React.createElement(KeywordsIcon, { className: "w-5 h-5" }), group: 'Keywords' },
+  { action: ShuntAction.EXTRACT_ENTITIES, icon: React.createElement(EntityIcon, { className: "w-5 h-5" }), group: 'Keywords' },
+  { action: ShuntAction.ENHANCE_WITH_KEYWORDS, icon: React.createElement(FeatherIcon, { className: "w-5 h-5" }), group: 'Keywords' },
+  { action: ShuntAction.CHANGE_TONE_FORMAL, icon: React.createElement(TieIcon, { className: "w-5 h-5" }), group: 'Tone' },
+  { action: ShuntAction.CHANGE_TONE_CASUAL, icon: React.createElement(SmileIcon, { className: "w-5 h-5" }), group: 'Tone' },
+  { action: ShuntAction.PROOFREAD, icon: React.createElement(EditIcon, { className: "w-5 h-5" }), group: 'Quality' },
+  { action: ShuntAction.REFINE_PROMPT, icon: React.createElement(SparklesIcon, { className: "w-5 h-5" }), group: 'Quality' },
+  { action: ShuntAction.TRANSLATE_SPANISH, icon: React.createElement(GlobeAltIcon, { className: "w-5 h-5" }), group: 'Quality' },
+  { action: ShuntAction.FORMAT_JSON, icon: React.createElement(JsonIcon, { className: "w-5 h-5" }), group: 'Data' },
+  { action: ShuntAction.GENERATE_VAM_PRESET, icon: React.createElement(DocumentChartBarIcon, { className: "w-5 h-5" }), group: 'Data' },
+  { action: ShuntAction.PARSE_JSON, icon: React.createElement(JsonToTextIcon, { className: "w-5 h-5" }), group: 'Data' },
+  { action: ShuntAction.INTERPRET_SVG, icon: React.createElement(PhotoIcon, { className: "w-5 h-5" }), group: 'Data' },
+];
+
+export const actionGroups = ['Content', 'Explanation', 'Keywords', 'Tone', 'Quality', 'Data'];
 
 
 export const getPromptForAction = (text: string, action: ShuntAction, context?: string, priority?: string): string => {

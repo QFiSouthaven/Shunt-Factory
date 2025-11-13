@@ -15,20 +15,26 @@
 export const parseSkillPackagePlan = (markdown: string): { path: string; content: string }[] => {
   const files: { path: string; content: string }[] = [];
   
-  // Regex to capture:
-  // 1. A comment line with the file path, e.g., `// path/to/file.ext`
-  // 2. The following code block's content.
-  const fileBlockRegex = /\/\/\s*([\w\/-]+\.[\w\.-]+)\s*\n```[\w-]*\n([\s\S]*?)```/g;
-
+  // NEW Primary Regex for HTML-style comments: <!-- path: path/to/file.ext -->
+  const htmlCommentRegex = /<!--\s*path:\s*([\w\/-]+\.[\w\.-]+)\s*-->\s*\n```[\w-]*\n([\s\S]*?)```/g;
   let match;
-  while ((match = fileBlockRegex.exec(markdown)) !== null) {
+  while ((match = htmlCommentRegex.exec(markdown)) !== null) {
     const path = match[1].trim();
     const content = match[2].trim();
     files.push({ path, content });
   }
 
-  // Fallback for cases where the file path might be inside the code block,
-  // which was the old, less reliable format.
+  // Fallback 1: JS/TS-style comments: // path/to/file.ext
+  if (files.length === 0) {
+      const fileBlockRegex = /\/\/\s*([\w\/-]+\.[\w\.-]+)\s*\n```[\w-]*\n([\s\S]*?)```/g;
+      while ((match = fileBlockRegex.exec(markdown)) !== null) {
+        const path = match[1].trim();
+        const content = match[2].trim();
+        files.push({ path, content });
+      }
+  }
+
+  // Fallback 2: path inside the code block
   if (files.length === 0) {
     const fallbackRegex = /```[\w-]*\s*\/\/\s*([\w\/-]+\.[\w\.-]+)\n([\s\S]*?)```/g;
     while ((match = fallbackRegex.exec(markdown)) !== null) {
@@ -38,7 +44,7 @@ export const parseSkillPackagePlan = (markdown: string): { path: string; content
     }
   }
   
-  // A second fallback for a different common AI pattern.
+  // Fallback 3: path in a markdown heading
   if (files.length === 0) {
     const fallbackRegex2 = /###\s*`?([\w\/-]+\.[\w\.-]+)`?\s*\n```[\w-]*\n([\s\S]*?)```/g;
     while ((match = fallbackRegex2.exec(markdown)) !== null) {

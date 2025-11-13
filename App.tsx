@@ -1,5 +1,6 @@
 
 
+
 import React, { useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { TelemetryProvider } from './context/TelemetryContext';
@@ -8,9 +9,10 @@ import { MCPProvider } from './context/MCPContext';
 import { MailboxProvider } from './context/MailboxContext';
 import { MiaProvider } from './context/MiaContext'; // Import MiaProvider
 import { SubscriptionProvider } from './context/SubscriptionContext';
+import { UndoRedoProvider } from './context/UndoRedoContext';
 import MissionControl from './components/mission_control/MissionControl';
 import { GlobalTelemetryContext } from './types/telemetry';
-import MiaAssistant from './components/mia/MiaAssistant';
+import MiaAssistant from './features/mia/MiaAssistant';
 import { useMiaContextTracker } from './hooks/useMiaContextTracker';
 import ErrorBoundary from './components/ErrorBoundary';
 import { audioService } from './services/audioService';
@@ -41,7 +43,9 @@ const App: React.FC = () => {
           <MailboxProvider>
             <MiaProvider>
               <SubscriptionProvider>
-                <AppContent />
+                <UndoRedoProvider>
+                  <AppContent />
+                </UndoRedoProvider>
               </SubscriptionProvider>
             </MiaProvider>
           </MailboxProvider>

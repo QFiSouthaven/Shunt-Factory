@@ -2,32 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { ShuntAction, PromptModuleKey } from '../../types';
 import ShuntButton from './ShuntButton';
 import { 
-    BookIcon, 
-    CodeIcon, 
-    EditIcon, 
-    JsonIcon, 
-    KeywordsIcon, 
-    SmileIcon, 
-    TieIcon, 
-    SparklesIcon,
-    AmplifyIcon,
     AmplifyX2Icon,
-    BrainIcon,
-    FeatherIcon,
-    JsonToTextIcon,
-    ActionableIcon,
-    PuzzlePieceIcon,
-    PhotoIcon,
-    EntityIcon,
-    DocumentChartBarIcon,
-    BranchingIcon,
-    GlobeAltIcon,
     BoltIcon,
     DeviceFloppyIcon,
     XMarkIcon,
-    MinusIcon
+    MinusIcon,
+    AmplifyIcon,
+    BrainIcon,
+    BranchingIcon,
+    SparklesIcon
 } from '../icons';
-import { shuntActionDescriptions, promptModules } from '../../services/prompts';
+import { shuntActionDescriptions, promptModules, shuntActionsConfig, actionGroups } from '../../services/prompts';
 import ToggleSwitch from '../common/ToggleSwitch';
 import { SubscriptionUsage, TierDetails } from '../../context/SubscriptionContext';
 
@@ -48,31 +33,6 @@ interface ControlPanelProps {
   isChainMode: boolean;
   onChainModeChange: (enabled: boolean) => void;
 }
-
-const shuntActionsConfig = [
-  { action: ShuntAction.SUMMARIZE, icon: <BookIcon className="w-5 h-5" />, group: 'Content' },
-  { action: ShuntAction.AMPLIFY, icon: <AmplifyIcon className="w-5 h-5" />, group: 'Content' },
-  { action: ShuntAction.MAKE_ACTIONABLE, icon: <ActionableIcon className="w-5 h-5" />, group: 'Content' },
-  { action: ShuntAction.BUILD_A_SKILL, icon: <PuzzlePieceIcon className="w-5 h-5" />, group: 'Content' },
-  { action: ShuntAction.MY_COMMAND, icon: <BranchingIcon className="w-5 h-5" />, group: 'Content' },
-  { action: ShuntAction.GENERATE_ORACLE_QUERY, icon: <GlobeAltIcon className="w-5 h-5" />, group: 'Content' },
-  { action: ShuntAction.EXPLAIN_LIKE_IM_FIVE, icon: <CodeIcon className="w-5 h-5" />, group: 'Explanation' },
-  { action: ShuntAction.EXPLAIN_LIKE_A_SENIOR, icon: <BrainIcon className="w-5 h-5" />, group: 'Explanation' },
-  { action: ShuntAction.EXTRACT_KEYWORDS, icon: <KeywordsIcon className="w-5 h-5" />, group: 'Keywords' },
-  { action: ShuntAction.EXTRACT_ENTITIES, icon: <EntityIcon className="w-5 h-5" />, group: 'Keywords' },
-  { action: ShuntAction.ENHANCE_WITH_KEYWORDS, icon: <FeatherIcon className="w-5 h-5" />, group: 'Keywords' },
-  { action: ShuntAction.CHANGE_TONE_FORMAL, icon: <TieIcon className="w-5 h-5" />, group: 'Tone' },
-  { action: ShuntAction.CHANGE_TONE_CASUAL, icon: <SmileIcon className="w-5 h-5" />, group: 'Tone' },
-  { action: ShuntAction.PROOFREAD, icon: <EditIcon className="w-5 h-5" />, group: 'Quality' },
-  { action: ShuntAction.REFINE_PROMPT, icon: <SparklesIcon className="w-5 h-5" />, group: 'Quality' },
-  { action: ShuntAction.TRANSLATE_SPANISH, icon: <GlobeAltIcon className="w-5 h-5" />, group: 'Quality' },
-  { action: ShuntAction.FORMAT_JSON, icon: <JsonIcon className="w-5 h-5" />, group: 'Data' },
-  { action: ShuntAction.GENERATE_VAM_PRESET, icon: <DocumentChartBarIcon className="w-5 h-5" />, group: 'Data' },
-  { action: ShuntAction.PARSE_JSON, icon: <JsonToTextIcon className="w-5 h-5" />, group: 'Data' },
-  { action: ShuntAction.INTERPRET_SVG, icon: <PhotoIcon className="w-5 h-5" />, group: 'Data' },
-];
-
-const actionGroups = ['Content', 'Explanation', 'Keywords', 'Tone', 'Quality', 'Data'];
 
 interface PromptPreset {
     name: string;

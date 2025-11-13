@@ -1,6 +1,7 @@
 import React from 'react';
 import { useMailbox } from '../../context/MailboxContext';
-import { FeedbackIcon, MailboxIcon } from '../icons';
+import { FeedbackIcon, MailboxIcon, RedoIcon, UndoIcon } from '../icons';
+import { useUndoRedoContext } from '../../context/UndoRedoContext';
 
 interface HeaderActionsProps {
     onOpenFeedback: () => void;
@@ -12,9 +13,27 @@ const HeaderActions: React.FC<HeaderActionsProps> = ({
     onOpenMailbox,
 }) => {
     const { unreadCount } = useMailbox();
+    const { undo, redo, canUndo, canRedo } = useUndoRedoContext();
 
     return (
         <div className="flex items-center gap-2">
+            <button
+                onClick={undo}
+                disabled={!canUndo}
+                className="p-2 rounded-full hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Undo"
+            >
+                <UndoIcon className="w-6 h-6 text-gray-300" />
+            </button>
+            <button
+                onClick={redo}
+                disabled={!canRedo}
+                className="p-2 rounded-full hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Redo"
+            >
+                <RedoIcon className="w-6 h-6 text-gray-300" />
+            </button>
+             <div className="w-px h-6 bg-gray-700/50 mx-2"></div>
             <button
                 onClick={onOpenFeedback}
                 className="p-2 rounded-full hover:bg-gray-700/50 transition-colors"

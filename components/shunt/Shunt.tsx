@@ -1,5 +1,5 @@
 // components/shunt/Shunt.tsx
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import JSZip from 'jszip';
 import InputPanel from './InputPanel';
@@ -28,6 +28,9 @@ import MobileViewSwitcher from './MobileViewSwitcher';
 import { useDebounce } from '../../hooks/useDebounce';
 import DocumentViewerModal from '../common/DocumentViewerModal';
 import { useLmStudio } from '../../hooks/useLmStudio';
+import Loader from '../Loader';
+
+const EvolveModal = lazy(() => import('./EvolveModal'));
 
 const DEMO_TEXT = `### **Feature Specification: Senior Documentation Specialist Workflow**
 
@@ -145,6 +148,7 @@ const Shunt: React.FC = () => {
         return saved ? JSON.parse(saved) : false;
     } catch { return false; }
   });
+  const [isEvolveModalOpen, setIsEvolveModalOpen] = useState(false);
 
   const shuntContainerRef = useRef<HTMLDivElement>(null);
   const isEvolvingRef = useRef(false);
@@ -275,7 +279,7 @@ const Shunt: React.FC = () => {
       .join('\n\n---\n\n');
   }, [bulletinDocuments]);
 
-  const handleEvolve = useCallback(async () => {
+  const handleGradeAndIterate = useCallback(async () => {
     if (!outputText) return;
     setIsEvolving(true);
     isEvolvingRef.current = true;
@@ -293,7 +297,7 @@ const Shunt: React.FC = () => {
         setError(null);
         setModulesForLastRun(null);
     } catch (e: any) {
-        handleApiError(e, { context: 'Shunt.handleEvolve' });
+        handleApiError(e, { context: 'Shunt.handleGradeAndIterate' });
     } finally {
         setIsEvolving(false);
         setTimeout(() => { isEvolvingRef.current = false; }, 500);
@@ -304,12 +308,12 @@ const Shunt: React.FC = () => {
   useEffect(() => {
     if (isChainMode && outputText && !isLoading && !error) {
         const chainTimeout = setTimeout(() => {
-            handleEvolve();
+            handleGradeAndIterate();
         }, 1500); // 1.5-second delay for user to read output
 
         return () => clearTimeout(chainTimeout);
     }
-  }, [outputText, isChainMode, isLoading, error, handleEvolve]);
+  }, [outputText, isChainMode, isLoading, error, handleGradeAndIterate]);
 
   const handleShunt = useCallback(async (action: ShuntAction | string, textToProcess: string = inputText) => {
     if (tierDetails.shuntRuns !== 'unlimited' && usage.shuntRuns >= tierDetails.shuntRuns) {
@@ -615,6 +619,26 @@ const Shunt: React.FC = () => {
     audioService.playSound('success');
   }, []);
 
+  const handleEvolveWorkflow = () => {
+      if (outputText) {
+          setIsEvolveModalOpen(true);
+      }
+  };
+
+  const handleEvolveComplete = (finalText: string) => {
+      setOutputText(finalText);
+      setInputText(finalText); // Also update input for chaining
+      setIsEvolveModalOpen(false);
+      // Create a history entry for the completed workflow
+      const newHistoryEntry: HistoryEntry = {
+        id: uuidv4(),
+        prompt: `Evolve Workflow on: ${outputText.substring(0, 50)}...`,
+        output: finalText,
+        score: 0, // No score for workflow
+      };
+      setHistory(prev => [...prev, newHistoryEntry]);
+  };
+
   const combinedIsLoading = isLoading || isLmStudioLoading;
 
   return (
@@ -685,7 +709,8 @@ const Shunt: React.FC = () => {
                     error={error}
                     activeShunt={activeShunt}
                     modulesUsed={modulesForLastRun}
-                    onEvolve={handleEvolve}
+                    onGradeAndIterate={handleGradeAndIterate}
+                    onEvolveWorkflow={handleEvolveWorkflow}
                     isEvolving={isEvolving}
                     isMinimized={panelStates.output}
                     onToggleMinimize={() => togglePanel('output')}
@@ -751,7 +776,8 @@ const Shunt: React.FC = () => {
                     error={error}
                     activeShunt={activeShunt}
                     modulesUsed={modulesForLastRun}
-                    onEvolve={handleEvolve}
+                    onGradeAndIterate={handleGradeAndIterate}
+                    onEvolveWorkflow={handleEvolveWorkflow}
                     isEvolving={isEvolving}
                     isMinimized={panelStates.output}
                     onToggleMinimize={() => togglePanel('output')}
@@ -791,6 +817,24 @@ const Shunt: React.FC = () => {
             document={viewingDocument}
         />
       )}
+      
+      <Suspense fallback={
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4">
+                <Loader />
+                <p className="text-gray-400">Loading Evolve Module...</p>
+            </div>
+        </div>
+      }>
+        {isEvolveModalOpen && (
+            <EvolveModal
+                isOpen={isEvolveModalOpen}
+                onClose={() => setIsEvolveModalOpen(false)}
+                initialText={outputText}
+                onComplete={handleEvolveComplete}
+            />
+        )}
+      </Suspense>
 
       <TabFooter />
     </div>

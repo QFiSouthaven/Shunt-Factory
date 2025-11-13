@@ -4,8 +4,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { setupGlobalErrorHandlers } from './utils/errorLogger';
 import ErrorBoundary from './components/ErrorBoundary';
+import { initializeTelemetry } from './services/telemetry';
 
 setupGlobalErrorHandlers();
+initializeTelemetry();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
