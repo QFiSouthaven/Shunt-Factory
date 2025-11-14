@@ -88,7 +88,8 @@ const Foundry: React.FC = () => {
         setPhase('Audit');
         addLogEntry("Phase 1: Homework - Commencing project audit via Gemini API...", 'PHASE');
 
-        const auditResults = await Promise.all(AGENT_NAMES.map(async (name) => {
+        const auditResults: { name: AgentName, auditFindings: string }[] = [];
+        for (const name of AGENT_NAMES) {
             updateAgentState(name, { status: 'Auditing', currentTask: 'Auditing project goal...' });
             const specialty = 
                 name === 'Architect' ? 'system design and scalability' : 
@@ -104,13 +105,13 @@ const Foundry: React.FC = () => {
                 const { resultText } = await generateRawText(prompt, 'gemini-2.5-flash');
                 updateAgentState(name, { status: 'Done', auditFindings: resultText, currentTask: 'Audit complete.' });
                 addLogEntry(`${name} agent audit complete.`, 'SUCCESS');
-                return { name, auditFindings: resultText };
+                auditResults.push({ name, auditFindings: resultText });
             } catch (e) {
                 updateAgentState(name, { status: 'Idle', currentTask: 'Audit failed.' });
                 addLogEntry(`${name} agent audit failed: ${e instanceof Error ? e.message : 'Unknown error'}`, 'INFO');
-                return { name, auditFindings: 'Audit failed.' };
+                auditResults.push({ name, auditFindings: 'Audit failed.' });
             }
-        }));
+        }
 
         await sleep(1000);
 
@@ -118,7 +119,8 @@ const Foundry: React.FC = () => {
         setPhase('Design');
         addLogEntry("Phase 2: Independent Design - Generating initial solutions...", 'PHASE');
         
-        const designResults = await Promise.all(auditResults.map(async ({ name, auditFindings }) => {
+        const designResults: { name: AgentName, design: string, designScore: number }[] = [];
+        for (const { name, auditFindings } of auditResults) {
             updateAgentState(name, { status: 'Designing', currentTask: 'Generating initial design proposal...' });
             const prompt = `You are the ${name} agent. Based on the project goal, project context, and your audit, create a high-level design proposal in markdown. After the proposal, you MUST provide a self-assessed score (0-100) in the format: "SCORE: [number]".\n\nPROJECT GOAL: "${goal}"\n\nPROJECT CONTEXT:\n---\n${projectContext}\n---\n\nYOUR AUDIT: "${auditFindings}"`;
             
@@ -127,13 +129,13 @@ const Foundry: React.FC = () => {
                 const { content, score } = parseScoreFromResult(resultText);
                 updateAgentState(name, { status: 'Done', design: content, designScore: score, currentTask: `Initial design ready. Score: ${score}` });
                 addLogEntry(`${name} agent initial design ready. [Score: ${score}]`, 'SUCCESS');
-                return { name, design: content, designScore: score };
+                designResults.push({ name, design: content, designScore: score });
             } catch(e) {
                  updateAgentState(name, { status: 'Idle', currentTask: 'Design failed.' });
                 addLogEntry(`${name} agent design failed: ${e instanceof Error ? e.message : 'Unknown error'}`, 'INFO');
-                return { name, design: 'Design generation failed.', designScore: 0 };
+                designResults.push({ name, design: 'Design generation failed.', designScore: 0 });
             }
-        }));
+        }
 
         setAgents(prev => prev.map(a => {
             const result = designResults.find(r => r.name === a.name);
@@ -167,7 +169,8 @@ const Foundry: React.FC = () => {
             addLogEntry(`Round ${round}: Gathering peer reviews...`, 'INFO');
             const allFeedback: { designOwner: AgentName, reviewer: AgentName, feedback: string }[] = [];
 
-            const reviewPromises = currentAgents.map(async (reviewer, i) => {
+            for (let i = 0; i < currentAgents.length; i++) {
+                const reviewer = currentAgents[i];
                 const designOwnerIndex = (i + 1) % currentAgents.length;
                 const designOwner = currentAgents[designOwnerIndex];
 
@@ -183,21 +186,23 @@ const Foundry: React.FC = () => {
                 } finally {
                     updateAgentState(reviewer.name, { status: 'Done', currentTask: `Finished review.` });
                 }
-            });
+            }
 
-            await Promise.all(reviewPromises);
             await sleep(1000);
 
             // Step 2: Refine designs based on feedback
             addLogEntry(`Round ${round}: Refining designs based on feedback...`, 'INFO');
-            const refinementPromises = currentAgents.map(async (agent) => {
+            
+            const refinedAgents: FoundryAgent[] = [];
+            for (const agent of currentAgents) {
                 const feedbackForAgent = allFeedback
                     .filter(f => f.designOwner === agent.name)
                     .map(f => `- Feedback from ${f.reviewer}: ${f.feedback}`)
                     .join('\n');
                 
                 if (!feedbackForAgent) {
-                    return { ...agent }; // No feedback, no change
+                    refinedAgents.push({ ...agent }); // No feedback, no change
+                    continue;
                 }
 
                 updateAgentState(agent.name, { status: 'Refining', currentTask: `Refining design based on peer feedback...` });
@@ -208,14 +213,13 @@ const Foundry: React.FC = () => {
                     const { resultText } = await generateRawText(prompt, 'gemini-2.5-pro');
                     const { content: newDesign, score: newScore } = parseScoreFromResult(resultText);
                     addLogEntry(`${agent.name} refined design. Score: ${agent.designScore?.toFixed(0)} -> ${newScore}`, 'DECISION');
-                    return { ...agent, design: newDesign, designScore: newScore, currentTask: `Refinement complete. New Score: ${newScore}` };
+                    refinedAgents.push({ ...agent, design: newDesign, designScore: newScore, currentTask: `Refinement complete. New Score: ${newScore}` });
                 } catch (e) {
                     addLogEntry(`${agent.name} failed to refine design.`, 'INFO');
-                    return { ...agent }; // Return original agent state on failure
+                    refinedAgents.push({ ...agent }); // Return original agent state on failure
                 }
-            });
-
-            currentAgents = await Promise.all(refinementPromises);
+            }
+            currentAgents = refinedAgents;
             setAgents(currentAgents);
 
             await sleep(1000);

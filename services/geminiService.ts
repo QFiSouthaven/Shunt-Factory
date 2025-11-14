@@ -1,42 +1,12 @@
 
+
 import { GoogleGenAI, Chat, GenerateContentResponse, Type } from "@google/genai";
 // FIX: Added PromptModuleKey to the import from types.
 import { ShuntAction, GeminiResponse, TokenUsage, ImplementationTask, PromptModuleKey } from '../types';
 // FIX: Added constructModularPrompt to the import from prompts.
 import { getPromptForAction, constructModularPrompt } from './prompts';
 import { logFrontendError, ErrorSeverity } from "../utils/errorLogger";
-
-/**
- * A utility function that wraps an API call with a retry mechanism.
- * If the API call fails with a rate limit error (429), it will retry
- * the call with an exponential backoff delay.
- * @param apiCall The async function to call.
- * @returns The result of the API call.
- */
-const withRetries = async <T>(apiCall: () => Promise<T>): Promise<T> => {
-    const maxRetries = 3;
-    let delay = 1000; // start with 1 second
-
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            return await apiCall();
-        } catch (error: any) {
-            const errorMessage = error.toString().toLowerCase();
-            const isRateLimitError = errorMessage.includes('429') || errorMessage.includes('resource_exhausted') || errorMessage.includes('rate limit');
-
-            if (isRateLimitError && i < maxRetries - 1) {
-                console.warn(`Rate limit hit. Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2; // Exponential backoff
-            } else {
-                // Last attempt or not a rate limit error, re-throw it
-                throw error;
-            }
-        }
-    }
-    // This line should be unreachable due to the throw in the catch block on the final iteration
-    throw new Error("An unexpected error occurred within the retry logic.");
-};
+import { withRetries } from './apiUtils';
 
 
 const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenUsage => {
@@ -54,12 +24,13 @@ export const performShunt = async (
     action: ShuntAction, 
     modelName: string,
     context?: string,
-    priority?: string
+    priority?: string,
+    promptInjectionGuardEnabled?: boolean
 ): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
   try {
     const apiCall = async () => {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = getPromptForAction(text, action, context, priority);
+        const prompt = getPromptForAction(text, action, context, priority, promptInjectionGuardEnabled);
         
         const isComplexAction = action === ShuntAction.MAKE_ACTIONABLE || action === ShuntAction.BUILD_A_SKILL;
         const config = (isComplexAction && modelName.includes('pro')) ? { thinkingConfig: { thinkingBudget: 32768 } } : {};
@@ -71,6 +42,7 @@ export const performShunt = async (
         });
         
         const resultText = response.text;
+        // FIX: Replaced undefined variable `model` with the correct parameter `modelName`.
         const tokenUsage = mapTokenUsage(response, modelName);
         
         if (action === ShuntAction.FORMAT_JSON || action === ShuntAction.MAKE_ACTIONABLE || action === ShuntAction.GENERATE_VAM_PRESET) {
@@ -99,10 +71,11 @@ export const executeModularPrompt = async (
   text: string,
   modules: Set<PromptModuleKey>,
   context?: string,
-  priority?: string
+  priority?: string,
+  promptInjectionGuardEnabled?: boolean
 ): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
   const model = 'gemini-2.5-pro'; // Modular prompts are complex, use Pro
-  const prompt = constructModularPrompt(text, modules, context, priority);
+  const prompt = constructModularPrompt(text, modules, context, priority, promptInjectionGuardEnabled);
   try {
     const apiCall = async () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -394,9 +367,13 @@ ${goal}
             type: Type.ARRAY,
             items: { type: Type.STRING },
             description: "A list of simple, verifiable test cases to confirm the feature works as expected."
+        },
+        dataSchema: {
+            type: Type.STRING,
+            description: "A string containing TypeScript interfaces or type definitions for any new or relevant data structures for the request."
         }
     },
-    required: ['clarifyingQuestions', 'architecturalProposal', 'implementationTasks', 'testCases']
+    required: ['clarifyingQuestions', 'architecturalProposal', 'implementationTasks', 'testCases', 'dataSchema']
   };
 
   try {
@@ -410,6 +387,10 @@ ${goal}
                 responseMimeType: "application/json",
                 responseSchema,
                 thinkingConfig: { thinkingBudget: 32768 },
+                temperature: 0.1,
+                topP: 0.9,
+                topK: 40,
+                maxOutputTokens: 4096,
             },
         });
 
@@ -422,6 +403,7 @@ ${goal}
             architecturalProposal: '',
             implementationTasks: [],
             testCases: [],
+            dataSchema: '',
             ...parsedResponse,
             tokenUsage,
         };

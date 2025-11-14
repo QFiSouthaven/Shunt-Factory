@@ -2,6 +2,7 @@
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { GeminiResponse, TokenUsage } from '../types';
 import { logFrontendError, ErrorSeverity } from "../utils/errorLogger";
+import { withRetries } from './apiUtils';
 
 const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenUsage => {
     return {
@@ -14,17 +15,20 @@ const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenU
 
 export const getMiaChatResponse = async (history: { role: string, parts: { text: string }[] }[], newMessage: string): Promise<string> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const chat = ai.chats.create({
-            model: 'gemini-2.5-pro',
-            config: {
-                systemInstruction: "You are Mia, a friendly and highly intelligent AI assistant embedded in a complex web application for developers. Be helpful and concise. Your primary role is to assist the user with understanding and operating the application.",
-                thinkingConfig: { thinkingBudget: 32768 },
-            },
-            history,
-        });
-        const response = await chat.sendMessage({ message: newMessage });
-        return response.text;
+        const apiCall = async () => {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const chat = ai.chats.create({
+                model: 'gemini-2.5-pro',
+                config: {
+                    systemInstruction: "You are Mia, a friendly and highly intelligent AI assistant embedded in a complex web application for developers. Be helpful and concise. Your primary role is to assist the user with understanding and operating the application.",
+                    thinkingConfig: { thinkingBudget: 32768 },
+                },
+                history,
+            });
+            const response = await chat.sendMessage({ message: newMessage });
+            return response.text;
+        };
+        return await withRetries(apiCall);
     } catch (error) {
         logFrontendError(error, ErrorSeverity.High, { context: 'getMiaChatResponse Gemini API call' });
         throw error;
@@ -43,15 +47,18 @@ Here is the error report:
 ${JSON.stringify(errorLog, null, 2)}
 ---`;
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: prompt,
-            config: {
-                thinkingConfig: { thinkingBudget: 32768 },
-            },
-        });
-        return response.text;
+        const apiCall = async () => {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-pro',
+                contents: prompt,
+                config: {
+                    thinkingConfig: { thinkingBudget: 32768 },
+                },
+            });
+            return response.text;
+        };
+        return await withRetries(apiCall);
     } catch (error) {
         logFrontendError(error, ErrorSeverity.Critical, { context: 'getMiaErrorAnalysis Gemini API call' });
         throw error;
@@ -125,35 +132,42 @@ ${projectContext}
             },
             description: "A list of files to modify with their full new content."
         },
-        testCases: { type: Type.ARRAY, items: { type: Type.STRING } }
+        testCases: { type: Type.ARRAY, items: { type: Type.STRING } },
+        internalMonologue: { 
+            type: Type.STRING, 
+            description: "The simulated internal monologue of the agent swarm as they collaborate to find a solution." 
+        }
     },
     required: ['implementationTasks']
   };
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = 'gemini-2.5-pro';
-    const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema,
-            thinkingConfig: { thinkingBudget: 32768 },
-        },
-    });
+    const apiCall = async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const model = 'gemini-2.5-pro';
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema,
+                thinkingConfig: { thinkingBudget: 32768 },
+            },
+        });
 
-    const tokenUsage = mapTokenUsage(response, model);
-    const jsonText = response.text;
-    const parsedResponse = JSON.parse(jsonText);
+        const tokenUsage = mapTokenUsage(response, model);
+        const jsonText = response.text;
+        const parsedResponse = JSON.parse(jsonText);
 
-    return {
-        clarifyingQuestions: [],
-        architecturalProposal: '',
-        testCases: [],
-        ...parsedResponse,
-        tokenUsage,
+        return {
+            clarifyingQuestions: [],
+            architecturalProposal: '',
+            testCases: [],
+            ...parsedResponse,
+            tokenUsage,
+        };
     };
+    return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.Critical, { context: 'generateCodeFixPlan Gemini API call' });
     throw error;

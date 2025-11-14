@@ -84,8 +84,8 @@ export const shuntActionsConfig: { action: ShuntAction; icon: React.ReactNode; g
 export const actionGroups = ['Content', 'Explanation', 'Keywords', 'Tone', 'Quality', 'Data'];
 
 
-export const getPromptForAction = (text: string, action: ShuntAction, context?: string, priority?: string): string => {
-  const protectedText = protectAgainstPromptInjection(text);
+export const getPromptForAction = (text: string, action: ShuntAction, context?: string, priority?: string, promptInjectionGuardEnabled: boolean = true): string => {
+  const protectedText = promptInjectionGuardEnabled ? protectAgainstPromptInjection(text) : text;
   
   const contextPreamble = context 
     ? `Please use the following reference documents to inform your response. The user's primary text will follow after the documents.\n\n<REFERENCE_DOCUMENTS>\n${context}\n</REFERENCE_DOCUMENTS>\n\n---\n\n` 
@@ -370,7 +370,7 @@ export const shuntActionDescriptions: Record<ShuntAction, string> = {
   [ShuntAction.REFINE_PROMPT]: 'Enhances a user-provided prompt by adding structure, clarity, and specific instructions to improve the quality of the AI\'s response.',
 };
 
-export const constructModularPrompt = (text: string, modules: Set<PromptModuleKey>, context?: string, priority?: string): string => {
+export const constructModularPrompt = (text: string, modules: Set<PromptModuleKey>, context?: string, priority?: string, promptInjectionGuardEnabled: boolean = true): string => {
     let fullPrompt = promptModules.CORE.content;
     for (const key of modules) {
         if (promptModules[key]) {
@@ -385,7 +385,7 @@ export const constructModularPrompt = (text: string, modules: Set<PromptModuleKe
         fullPrompt += `\n\n---\n\n**Task Priority: ${priority}**\nThis priority level should guide the depth and speed of your response.`;
     }
 
-    fullPrompt += `\n\n---\n\nUser Input:\n${protectAgainstPromptInjection(text)}`;
+    fullPrompt += `\n\n---\n\nUser Input:\n${promptInjectionGuardEnabled ? protectAgainstPromptInjection(text) : text}`;
 
     return fullPrompt;
 };

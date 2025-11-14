@@ -104,8 +104,8 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                                         <pre className="text-xs text-gray-300 whitespace-pre-wrap break-all max-h-48 overflow-y-auto p-2 bg-black/30 rounded-md font-mono">
                                             {diffView ? diffView.split('\n').map((line, idx) => (
                                                 <span key={idx} className={
-                                                    line.startsWith('+') ? 'text-red-400' :
-                                                    line.startsWith('-') ? 'text-green-400' :
+                                                    line.startsWith('+') ? 'text-green-400' :
+                                                    line.startsWith('-') ? 'text-red-400' :
                                                     'text-gray-400'
                                                 }>
                                                     {line}<br/>

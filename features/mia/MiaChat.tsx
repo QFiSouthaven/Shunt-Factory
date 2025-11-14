@@ -4,6 +4,7 @@ import { useMiaContext } from '../../context/MiaContext';
 import { BrainIcon, CodeIcon } from '../../components/icons';
 import { ShuntAction } from '../../types';
 import { performShunt } from '../../services/geminiService';
+import { useSettings } from '../../context/SettingsContext';
 
 const commandToAction: { [key: string]: ShuntAction } = {
     'summarize': ShuntAction.SUMMARIZE,
@@ -38,6 +39,7 @@ const MiaChat: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [isShuntLoading, setIsShuntLoading] = useState(false);
+  const { settings } = useSettings();
 
   const hasCriticalError = alerts.some(a => a.severity === 'critical');
 
@@ -65,7 +67,7 @@ const MiaChat: React.FC = () => {
             addMessage({ id: Date.now().toString(), sender: 'user', text: messageText, timestamp: new Date().toISOString() });
             setIsShuntLoading(true);
             try {
-                const result = await performShunt(text, action, 'gemini-2.5-flash');
+                const result = await performShunt(text, action, 'gemini-2.5-flash', undefined, undefined, settings.promptInjectionGuardEnabled);
                 addMessage({ id: Date.now().toString(), sender: 'mia', text: result.resultText, timestamp: new Date().toISOString() });
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';

@@ -23,4 +23,5 @@ export const geminiDevelopmentPlanResponseSchema = z.object({
   implementationTasks: z.array(implementationTaskSchema),
   testCases: z.array(z.string()),
   internalMonologue: z.string().optional(),
+  dataSchema: z.string().optional(),
 });

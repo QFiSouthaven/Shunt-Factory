@@ -32,6 +32,42 @@ import Loader from '../Loader';
 
 const EvolveModal = lazy(() => import('./EvolveModal'));
 
+const DEFAULT_INPUT_TEXT = `Refactoring \`auth.js\`: Callbacks to Async/Await
+
+This plan assumes \`auth.js\` contains asynchronous operations (e.g., database calls, file I/O, API requests) that currently rely on callback functions for handling results and errors.
+
+
+Phase 1: Preparation and Setup
+
+1. Backup Your Code:
+
+* Crucial first step! Before making any changes, ensure you have a working backup or commit your current \`auth.js\` to version control. This allows you to revert easily if anything goes wrong.
+
+
+2. Identify Asynchronous Functions:
+
+* Open \`auth.js\` and pinpoint all functions that take a callback as their last argument (e.g., \`getUser(id, callback)\`, \`saveUser(user, callback)\`, \`readFile(path, callback)\`).
+
+* Note down the parameters passed to these callbacks (e.g., \`callback(err, data)\`). This is essential for converting them to Promises.
+
+
+3. Understand Dependencies and External Libraries:
+
+* Node.js Built-in Modules (e.g., \`fs\`): Node.js often has \`.../promises\` versions (e.g., \`fs.promises\`) or \`util.promisify\` for converting callback-based functions. Prioritize these if available.
+
+* Database Libraries (e.g., Mongoose, Sequelize, \`node-postgres\`): Most modern database libraries return Promises by default or have methods like \`.exec()\` (Mongoose) that return Promises.
+
+* HTTP Clients (e.g., \`request\`, \`axios\`): If using \`request\`, consider switching to a Promise-based client like \`axios\` or the built-in \`fetch\` API (for newer Node.js versions) if it's not already used.
+
+* Custom Asynchronous Functions: These will be the primary candidates for manual Promisification.
+
+
+4. Set Up Testing (If Applicable):
+
+* If you have existing unit or integration tests for \`auth.js\` functionality, make sure they are runnable. You'll use them to verify correctness after refactoring.
+
+* If not, plan for thorough manual testing of all authentication flows (login, registration, password reset, token validation, etc.).`;
+
 const DEMO_TEXT = `### **Feature Specification: Senior Documentation Specialist Workflow**
 
 #### **1. Objective**
@@ -104,7 +140,7 @@ interface BulletinDocument {
 }
 
 const Shunt: React.FC = () => {
-  const [inputText, setInputText] = useState(() => localStorage.getItem('shunt_inputText') || '');
+  const [inputText, setInputText] = useState(() => localStorage.getItem('shunt_inputText') || DEFAULT_INPUT_TEXT);
   const [outputText, setOutputText] = useState(() => localStorage.getItem('shunt_outputText') || '');
   const [priority, setPriority] = useState(() => localStorage.getItem('shunt_priority') || 'Medium');
   const [isLoading, setIsLoading] = useState(false);
@@ -342,7 +378,7 @@ const Shunt: React.FC = () => {
     const bulletinContext = getBulletinContext();
 
     try {
-        const { resultText, tokenUsage } = await performShunt(sanitizedText, action as ShuntAction, selectedModel, bulletinContext, priority);
+        const { resultText, tokenUsage } = await performShunt(sanitizedText, action as ShuntAction, selectedModel, bulletinContext, priority, settings.promptInjectionGuardEnabled);
 
         if (action === ShuntAction.BUILD_A_SKILL) {
             const files = parseSkillPackagePlan(resultText);
@@ -403,7 +439,7 @@ const Shunt: React.FC = () => {
                 console.warn(`Gemini rate limit hit. Falling back to local model for action: ${action}.`);
                 setError(null);
                 setActiveShunt(`Fallback: ${action}`);
-                const promptForLocal = getPromptForAction(sanitizedText, action as ShuntAction, bulletinContext, priority);
+                const promptForLocal = getPromptForAction(sanitizedText, action as ShuntAction, bulletinContext, priority, settings.promptInjectionGuardEnabled);
                 const { resultText } = await callLmStudio(promptForLocal, settings.lmStudioEndpoint);
                 
                 setOutputText(`[LOCAL MODEL FALLBACK]\n\n---\n\n${resultText}`);
@@ -463,7 +499,7 @@ const Shunt: React.FC = () => {
     try {
       setModulesForLastRun(moduleNames);
 
-      const { resultText, tokenUsage } = await executeModularPrompt(sanitizedText, modules, bulletinContext, priority);
+      const { resultText, tokenUsage } = await executeModularPrompt(sanitizedText, modules, bulletinContext, priority, settings.promptInjectionGuardEnabled);
       
       setOutputText(resultText);
       audioService.playSound('receive');
@@ -491,7 +527,7 @@ const Shunt: React.FC = () => {
                 setError(null);
                 setActiveShunt(`Fallback: Modular Prompt`);
 
-                const fullPrompt = constructModularPrompt(sanitizedText, modules, bulletinContext, priority);
+                const fullPrompt = constructModularPrompt(sanitizedText, modules, bulletinContext, priority, settings.promptInjectionGuardEnabled);
                 const { resultText } = await callLmStudio(fullPrompt, settings.lmStudioEndpoint);
 
                 setOutputText(`[LOCAL MODEL FALLBACK]\n\n---\n\n${resultText}`);
@@ -523,8 +559,8 @@ const Shunt: React.FC = () => {
     audioService.playSound('send');
     
     try {
-        const firstPass = await performShunt(inputText, draggedAction, selectedModel, getBulletinContext(), priority);
-        const secondPass = await performShunt(firstPass.resultText, targetAction, selectedModel, getBulletinContext(), priority);
+        const firstPass = await performShunt(inputText, draggedAction, selectedModel, getBulletinContext(), priority, settings.promptInjectionGuardEnabled);
+        const secondPass = await performShunt(firstPass.resultText, targetAction, selectedModel, getBulletinContext(), priority, settings.promptInjectionGuardEnabled);
 
         setOutputText(secondPass.resultText);
         audioService.playSound('receive');
@@ -541,7 +577,7 @@ const Shunt: React.FC = () => {
         setIsLoading(false);
         setActiveShunt(null);
     }
-  }, [inputText, isLoading, selectedModel, handleApiError, getBulletinContext, priority]);
+  }, [inputText, isLoading, selectedModel, handleApiError, getBulletinContext, priority, settings.promptInjectionGuardEnabled]);
   
     const handleSynthesize = useCallback(async () => {
     if (tierDetails.shuntRuns !== 'unlimited' && usage.shuntRuns >= tierDetails.shuntRuns) {

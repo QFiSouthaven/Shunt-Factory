@@ -1,7 +1,7 @@
 import React from 'react';
 // FIX: Corrected import paths to be relative to the project root.
 import { GeminiResponse } from '../../types';
-import { BookIcon, CodeIcon, EditIcon, KeywordsIcon } from '../icons';
+import { BookIcon, CodeIcon, EditIcon, KeywordsIcon, DocumentChartBarIcon } from '../icons';
 
 interface PlanDisplayProps {
   plan: GeminiResponse | null;
@@ -51,6 +51,14 @@ const PlanDisplay: React.FC<PlanDisplayProps> = ({ plan, newlyGenerated }) => {
             <p className="text-gray-300 whitespace-pre-wrap">{plan.architecturalProposal}</p>
         ) : (
             <p className="text-gray-400 text-sm italic">No architectural proposal was provided.</p>
+        )}
+      </Section>
+
+      <Section title="Data Schema" icon={<DocumentChartBarIcon className="w-5 h-5 text-cyan-400" />}>
+        {plan.dataSchema && plan.dataSchema.trim() ? (
+            <pre className="text-xs text-gray-300 whitespace-pre-wrap p-2 bg-black/30 rounded-md font-mono">{plan.dataSchema}</pre>
+        ) : (
+            <p className="text-gray-400 text-sm italic">No data schema was provided.</p>
         )}
       </Section>
 
