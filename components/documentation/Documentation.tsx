@@ -4,11 +4,12 @@ import TabFooter from '../common/TabFooter';
 import MarkdownRenderer from '../common/MarkdownRenderer';
 import FileUpload from '../common/FileUpload';
 import Loader from '../Loader';
-import { generateRawText, generateProjectTome } from '../../services/geminiService';
+import { generateRawText, generateProjectTome, generateApiDocumentation, generateQualityReport } from '../../services/geminiService';
 import { generateFileTree, generateComponentDiagram } from '../../services/diagramService';
 import { BookIcon, XMarkIcon, SparklesIcon, CopyIcon, CheckIcon, ChatBubbleLeftRightIcon, DocumentChartBarIcon, GlobeAltIcon } from '../icons';
 import { audioService } from '../../services/audioService';
 import { parseApiError } from '../../utils/errorLogger';
+import DocumentViewerModal from '../common/DocumentViewerModal';
 
 interface ProjectFile {
     filename: string;
@@ -29,6 +30,7 @@ const Documentation: React.FC = () => {
     const [docTitle, setDocTitle] = useState<string>(() => localStorage.getItem('documentation_docTitle') || 'Generated Documentation');
     const [manualFilename, setManualFilename] = useState<string>('');
     const [manualContent, setManualContent] = useState<string>('');
+    const [viewingFile, setViewingFile] = useState<ProjectFile | null>(null);
 
     useEffect(() => { localStorage.setItem('documentation_projectFiles', JSON.stringify(projectFiles)); }, [projectFiles]);
     useEffect(() => { generatedDoc ? localStorage.setItem('documentation_generatedDoc', generatedDoc) : localStorage.removeItem('documentation_generatedDoc'); }, [generatedDoc]);
@@ -304,7 +306,7 @@ ${projectContext}
         audioService.playSound('send');
 
         try {
-            // Step 1: Generate diagrams from file content
+            // Step 1: Generate diagrams
             const fileTree = generateFileTree(projectFiles);
             const componentDiagram = generateComponentDiagram(projectFiles);
 
@@ -313,16 +315,53 @@ ${projectContext}
                 .map(file => `--- FILE: ${file.filename} ---\n\n${file.content}`)
                 .join('\n\n---\n\n');
             
-            const { resultText } = await generateProjectTome(projectContext);
+            const { resultText } = await generateProjectTome(projectContext, fileTree, componentDiagram);
 
-            // Step 3: Inject the generated diagrams into the AI's markdown
-            let finalDoc = resultText;
-            finalDoc = finalDoc.replace('[INSERT_FILE_STRUCTURE_DIAGRAM]', fileTree);
-            finalDoc = finalDoc.replace('[INSERT_COMPONENT_HIERARCHY_DIAGRAM]', `\`\`\`mermaid\n${componentDiagram}\n\`\`\``);
-
-            setGeneratedDoc(finalDoc);
+            setGeneratedDoc(resultText);
             audioService.playSound('receive');
 
+        } catch (e) {
+            const userFriendlyMessage = parseApiError(e);
+            setError(userFriendlyMessage);
+            audioService.playSound('error');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [projectFiles, isLoading]);
+
+    const handleGenerateApiDocs = useCallback(async () => {
+        if (projectFiles.length === 0 || isLoading) return;
+        setIsLoading(true);
+        setError(null);
+        setGeneratedDoc(null);
+        setDocTitle('API Documentation');
+        audioService.playSound('send');
+        try {
+            const projectContext = projectFiles.map(f => `--- FILE: ${f.filename} ---\n\n${f.content}`).join('\n\n---\n\n');
+            const { resultText } = await generateApiDocumentation(projectContext);
+            setGeneratedDoc(resultText);
+            audioService.playSound('receive');
+        } catch (e) {
+            const userFriendlyMessage = parseApiError(e);
+            setError(userFriendlyMessage);
+            audioService.playSound('error');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [projectFiles, isLoading]);
+
+    const handleGenerateQualityReport = useCallback(async () => {
+        if (projectFiles.length === 0 || isLoading) return;
+        setIsLoading(true);
+        setError(null);
+        setGeneratedDoc(null);
+        setDocTitle('Code Quality & Refactoring Report');
+        audioService.playSound('send');
+        try {
+            const projectContext = projectFiles.map(f => `--- FILE: ${f.filename} ---\n\n${f.content}`).join('\n\n---\n\n');
+            const { resultText } = await generateQualityReport(projectContext);
+            setGeneratedDoc(resultText);
+            audioService.playSound('receive');
         } catch (e) {
             const userFriendlyMessage = parseApiError(e);
             setError(userFriendlyMessage);
@@ -393,12 +432,21 @@ ${projectContext}
                     </div>
                     {/* Staged Files and Controls */}
                     <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-4 flex flex-col flex-grow min-h-[200px]">
-                        <h3 className="text-lg font-semibold text-white mb-4">Staged Files ({projectFiles.length})</h3>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold text-white">Staged Files ({projectFiles.length})</h3>
+                             {projectFiles.length > 0 && (
+                                <button onClick={handleClear} disabled={isLoading} className="text-xs bg-red-600/50 text-red-200 px-2 py-1 rounded hover:bg-red-600/80 transition-colors">
+                                    Clear All
+                                </button>
+                            )}
+                        </div>
                         {projectFiles.length > 0 ? (
                             <div className="flex-grow overflow-y-auto space-y-2 pr-2 mb-4">
                                 {projectFiles.map(file => (
-                                    <div key={file.filename} className="flex items-center justify-between bg-gray-900/50 p-2 rounded text-sm">
-                                        <span className="text-gray-300 truncate font-mono text-xs" title={file.filename}>{file.filename}</span>
+                                    <div key={file.filename} className="flex items-center justify-between bg-gray-900/50 p-2 rounded text-sm group">
+                                        <button onClick={() => setViewingFile(file)} className="text-left flex-grow truncate">
+                                            <span className="text-gray-300 group-hover:text-cyan-400 transition-colors font-mono text-xs" title={file.filename}>{file.filename}</span>
+                                        </button>
                                         <button onClick={() => removeFile(file.filename)} className="p-1 text-gray-500 hover:text-red-400">
                                             <XMarkIcon className="w-4 h-4" />
                                         </button>
@@ -419,47 +467,56 @@ ${projectContext}
                                 {isLoading ? <Loader /> : <GlobeAltIcon className="w-5 h-5" />}
                                 Generate Project Tome
                             </button>
-                             <div className="grid grid-cols-2 gap-4">
+                             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                                 <button
                                     onClick={handleGenerateDocumentation}
                                     disabled={isLoading || projectFiles.length === 0}
-                                    className="w-full flex items-center justify-center gap-2 text-md font-semibold text-center p-3 rounded-md border transition-all duration-200 bg-fuchsia-600/80 border-fuchsia-500 text-white shadow-lg hover:bg-fuchsia-600 hover:border-fuchsia-400 hover:shadow-fuchsia-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-center p-2 rounded-md border transition-all duration-200 bg-fuchsia-600/80 border-fuchsia-500 text-white shadow-lg hover:bg-fuchsia-600 hover:border-fuchsia-400 hover:shadow-fuchsia-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {isLoading ? <Loader /> : <SparklesIcon className="w-5 h-5" />}
+                                    <SparklesIcon className="w-5 h-5" />
                                     README
                                 </button>
                                 <button
                                     onClick={handleGenerateBlueprint}
                                     disabled={isLoading || projectFiles.length === 0}
-                                    className="w-full flex items-center justify-center gap-2 text-md font-semibold text-center p-3 rounded-md border transition-all duration-200 bg-cyan-600/80 border-cyan-500 text-white shadow-lg hover:bg-cyan-600 hover:border-cyan-400 hover:shadow-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-center p-2 rounded-md border transition-all duration-200 bg-gray-700/80 border-gray-600 text-white shadow-lg hover:bg-gray-700 hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {isLoading ? <Loader /> : <BookIcon className="w-5 h-5" />}
+                                    <BookIcon className="w-5 h-5" />
                                     Blueprint
                                 </button>
                                 <button
                                     onClick={handleConvertToNaturalLanguage}
                                     disabled={isLoading || projectFiles.length === 0}
-                                    className="w-full flex items-center justify-center gap-2 text-md font-semibold text-center p-3 rounded-md border transition-all duration-200 bg-green-600/80 border-green-500 text-white shadow-lg hover:bg-green-600 hover:border-green-400 hover:shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-center p-2 rounded-md border transition-all duration-200 bg-gray-700/80 border-gray-600 text-white shadow-lg hover:bg-gray-700 hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {isLoading ? <Loader /> : <ChatBubbleLeftRightIcon className="w-5 h-5" />}
-                                    Natural Language
+                                    <ChatBubbleLeftRightIcon className="w-5 h-5" />
+                                    Explain
                                 </button>
                                 <button
                                     onClick={handleGenerateBuildPlan}
                                     disabled={isLoading || projectFiles.length === 0}
-                                    className="w-full flex items-center justify-center gap-2 text-md font-semibold text-center p-3 rounded-md border transition-all duration-200 bg-yellow-600/80 border-yellow-500 text-white shadow-lg hover:bg-yellow-600 hover:border-yellow-400 hover:shadow-yellow-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-center p-2 rounded-md border transition-all duration-200 bg-gray-700/80 border-gray-600 text-white shadow-lg hover:bg-gray-700 hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {isLoading ? <Loader /> : <DocumentChartBarIcon className="w-5 h-5" />}
+                                    <DocumentChartBarIcon className="w-5 h-5" />
                                     Build Plan
                                 </button>
+                                <button
+                                    onClick={handleGenerateApiDocs}
+                                    disabled={isLoading || projectFiles.length === 0}
+                                    className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-center p-2 rounded-md border transition-all duration-200 bg-cyan-600/80 border-cyan-500 text-white shadow-lg hover:bg-cyan-600 hover:border-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <GlobeAltIcon className="w-5 h-5" />
+                                    API Docs
+                                </button>
+                                <button
+                                    onClick={handleGenerateQualityReport}
+                                    disabled={isLoading || projectFiles.length === 0}
+                                    className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-center p-2 rounded-md border transition-all duration-200 bg-green-600/80 border-green-500 text-white shadow-lg hover:bg-green-600 hover:border-green-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <DocumentChartBarIcon className="w-5 h-5" />
+                                    Quality Report
+                                </button>
                             </div>
-                            <button
-                                onClick={handleClear}
-                                disabled={isLoading}
-                                className="w-full text-sm text-center p-3 rounded-md border transition-all duration-200 bg-gray-700/30 border-gray-600/50 text-gray-300 hover:bg-gray-700/60 hover:border-gray-500 disabled:opacity-50"
-                            >
-                                Clear All Files
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -506,6 +563,14 @@ ${projectContext}
                 </div>
             </div>
             <TabFooter />
+            {viewingFile && (
+                <DocumentViewerModal
+                    isOpen={!!viewingFile}
+                    onClose={() => setViewingFile(null)}
+                    // FIX: Map the `ProjectFile` type to the `Document` type expected by `DocumentViewerModal`.
+                    document={{ name: viewingFile.filename, content: viewingFile.content }}
+                />
+            )}
         </div>
     );
 };

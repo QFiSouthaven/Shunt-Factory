@@ -45,7 +45,9 @@ ${buildTreeString(root)}
  * Generates a Mermaid.js graph syntax for the component hierarchy.
  */
 export const generateComponentDiagram = (files: ProjectFile[]): string => {
-    const componentRegex = /<([A-Z][a-zA-Z0-9_]+)/g;
+    // A more robust regex to capture component names (including dot notation like React.Fragment)
+    // and avoid capturing attributes or other characters.
+    const componentRegex = /<([A-Z][a-zA-Z0-9_.]*)/g;
     const dependencies: { [parent: string]: Set<string> } = {};
 
     const getComponentName = (path: string): string => {
@@ -54,7 +56,7 @@ export const generateComponentDiagram = (files: ProjectFile[]): string => {
         if (filename === 'index.tsx' && parts.length > 1) {
             return parts[parts.length - 2];
         }
-        return filename.replace('.tsx', '');
+        return filename.replace(/\.tsx$/, '');
     };
 
     for (const file of files) {
@@ -66,12 +68,19 @@ export const generateComponentDiagram = (files: ProjectFile[]): string => {
         }
 
         let match;
+        // Reset regex state for each new file content being processed.
+        componentRegex.lastIndex = 0;
         while ((match = componentRegex.exec(file.content)) !== null) {
             const childComponent = match[1];
-            // Basic filtering to avoid HTML tags and self-references
-            if (childComponent !== parentComponent && /^[A-Z]/.test(childComponent)) {
-                dependencies[parentComponent].add(childComponent);
+
+            // Explicitly skip self-references to prevent cycles.
+            if (childComponent === parentComponent) {
+                continue;
             }
+            
+            // The regex already ensures the name starts with a capital,
+            // so we just add it to the dependency set.
+            dependencies[parentComponent].add(childComponent);
         }
     }
 
@@ -79,9 +88,11 @@ export const generateComponentDiagram = (files: ProjectFile[]): string => {
     for (const parent in dependencies) {
         if (dependencies[parent].size > 0) {
             dependencies[parent].forEach(child => {
-                // By quoting the node IDs, we prevent syntax errors if a component name
-                // contains special characters or is a Mermaid keyword.
-                mermaidGraph += `    "${parent}" --> "${child}";\n`;
+                // Final safeguard against cycles before writing to the graph string.
+                if (parent !== child) {
+                    // Ensure strings are properly quoted to handle names like `React.Fragment`.
+                    mermaidGraph += `    "${parent}" --> "${child}";\n`;
+                }
             });
         }
     }

@@ -122,7 +122,18 @@ const Foundry: React.FC = () => {
         const designResults: { name: AgentName, design: string, designScore: number }[] = [];
         for (const { name, auditFindings } of auditResults) {
             updateAgentState(name, { status: 'Designing', currentTask: 'Generating initial design proposal...' });
-            const prompt = `You are the ${name} agent. Based on the project goal, project context, and your audit, create a high-level design proposal in markdown. After the proposal, you MUST provide a self-assessed score (0-100) in the format: "SCORE: [number]".\n\nPROJECT GOAL: "${goal}"\n\nPROJECT CONTEXT:\n---\n${projectContext}\n---\n\nYOUR AUDIT: "${auditFindings}"`;
+            const prompt = `You are the ${name} agent. Based on the project goal, project context, and your audit, create a high-level design proposal in markdown.
+
+**Mermaid Diagram Rules:**
+If you include a Mermaid diagram (using \`\`\`mermaid), you MUST ensure it is syntactically correct.
+1. Enclose any node text that contains special characters (like '()[]{}') or keywords in double quotes.
+   - Correct: \`A["Node with (parentheses)"] --> B\`
+   - Incorrect: \`A[Node with (parentheses)] --> B\`
+2. Do not create self-referencing nodes (e.g., \`A --> A\`).
+
+After the proposal, you MUST provide a self-assessed score (0-100) in the format: "SCORE: [number]".
+
+\n\nPROJECT GOAL: "${goal}"\n\nPROJECT CONTEXT:\n---\n${projectContext}\n---\n\nYOUR AUDIT: "${auditFindings}"`;
             
             try {
                 const { resultText } = await generateRawText(prompt, 'gemini-2.5-pro');
@@ -207,7 +218,16 @@ const Foundry: React.FC = () => {
 
                 updateAgentState(agent.name, { status: 'Refining', currentTask: `Refining design based on peer feedback...` });
                 
-                const prompt = `You are the ${agent.name} agent. Your current design has been reviewed by your peers. Refine your design by incorporating their feedback to improve it, keeping the original goal and project context in mind. Produce a new, improved version of your design and provide a new self-assessed score (0-100) in the format: "SCORE: [number]".\n\nORIGINAL GOAL: "${goal}"\n\nPROJECT CONTEXT:\n---\n${projectContext}\n---\n\nYOUR CURRENT DESIGN (Score: ${agent.designScore}):\n---\n${agent.design}\n---\n\nPEER FEEDBACK:\n---\n${feedbackForAgent}\n---\n\nREFINED DESIGN (in markdown):`;
+                const prompt = `You are the ${agent.name} agent. Your current design has been reviewed by your peers. Refine your design by incorporating their feedback to improve it, keeping the original goal and project context in mind. Produce a new, improved version of your design and provide a new self-assessed score (0-100) in the format: "SCORE: [number]".
+
+**Mermaid Diagram Rules:**
+If you include a Mermaid diagram (using \`\`\`mermaid), you MUST ensure it is syntactically correct.
+1. Enclose any node text that contains special characters (like '()[]{}') or keywords in double quotes.
+   - Correct: \`A["Node with (parentheses)"] --> B\`
+   - Incorrect: \`A[Node with (parentheses)] --> B\`
+2. Do not create self-referencing nodes (e.g., \`A --> A\`).
+
+\n\nORIGINAL GOAL: "${goal}"\n\nPROJECT CONTEXT:\n---\n${projectContext}\n---\n\nYOUR CURRENT DESIGN (Score: ${agent.designScore}):\n---\n${agent.design}\n---\n\nPEER FEEDBACK:\n---\n${feedbackForAgent}\n---\n\nREFINED DESIGN (in markdown):`;
 
                 try {
                     const { resultText } = await generateRawText(prompt, 'gemini-2.5-pro');

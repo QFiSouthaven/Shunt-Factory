@@ -62,7 +62,7 @@ export const performShunt = async (
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'performShunt Gemini API call' });
-    throw new Error('Failed to get a response from the AI. Please check your connection and try again.');
+    throw error;
   }
 };
 
@@ -91,7 +91,7 @@ export const executeModularPrompt = async (
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'executeModularPrompt Gemini API call' });
-    throw new Error('Failed to execute modular prompt.');
+    throw error;
   }
 };
 
@@ -124,7 +124,7 @@ ${output}
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'gradeOutput Gemini API call' });
-    throw new Error('Failed to grade AI output.');
+    throw error;
   }
 };
 
@@ -152,7 +152,7 @@ ${combinedContent}
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'synthesizeDocuments Gemini API call' });
-    throw new Error('Failed to synthesize documents.');
+    throw error;
   }
 };
 
@@ -172,7 +172,7 @@ export const generateRawText = async (prompt: string, modelName: string): Promis
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'generateRawText Gemini API call' });
-    throw new Error('Failed to generate raw text from AI.');
+    throw error;
   }
 };
 
@@ -209,7 +209,7 @@ ${eventsJson}
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'generateOraculumInsights Gemini API call' });
-    throw new Error('Failed to generate insights from telemetry.');
+    throw error;
   }
 };
 
@@ -227,7 +227,7 @@ export const generateOrchestratorReport = async (prompt: string): Promise<{ resu
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'generateOrchestratorReport Gemini API call' });
-    throw new Error('Failed to generate the analysis report. Please try again.');
+    throw error;
   }
 };
 
@@ -258,7 +258,7 @@ ${metrics}
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'generatePerformanceReport Gemini API call' });
-    throw new Error('Failed to generate the performance report. Please try again.');
+    throw error;
   }
 };
 
@@ -305,7 +305,7 @@ export const getAIChatResponseWithContextFlag = async (prompt: string): Promise<
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'getAIChatResponseWithContextFlag Gemini API call' });
-    throw new Error('Failed to get a response from the AI. The response may have been malformed JSON.');
+    throw error;
   }
 };
 
@@ -411,17 +411,16 @@ ${goal}
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.Critical, { context: 'generateDevelopmentPlan Gemini API call' });
-    throw new Error('Failed to generate the development plan. The AI may have returned an invalid response or malformed JSON.');
+    throw error;
   }
 }
 
-// FIX: Added the missing 'generateProjectTome' function.
-export const generateProjectTome = async (projectContext: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+export const generateProjectTome = async (projectContext: string, fileTree: string, componentDiagram: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
     const model = 'gemini-2.5-pro';
     const prompt = `
-You are a "Tome Weaver" AI. Your purpose is to create a definitive, all-encompassing "Project Tome" from a provided codebase. This document should serve as the ultimate source of truth for any developer, new or old, to understand the project's architecture, purpose, and implementation details.
+You are a "Tome Weaver" AI. Your purpose is to create a definitive, all-encompassing "Project Tome" from a provided codebase and pre-generated diagrams. This document should serve as the ultimate source of truth for any developer.
 
-Structure the output in Markdown with the following sections, injecting the placeholder strings exactly as written where specified.
+Structure the output in Markdown.
 
 # Project Tome: [Infer a suitable project name from context]
 
@@ -429,26 +428,34 @@ Structure the output in Markdown with the following sections, injecting the plac
 A high-level, one-paragraph overview of the application's purpose and its core functionality.
 
 ## 2. File Structure Overview
-A visual representation of the project's file tree.
-[INSERT_FILE_STRUCTURE_DIAGRAM]
+**Analyze and describe the provided file tree diagram.** Explain the purpose of the main directories (\`components\`, \`services\`, \`context\`, etc.). After your explanation, embed the provided file tree diagram exactly as it is given.
 
 ## 3. Architectural Deep Dive
-- **Core Philosophy:** Describe the main architectural patterns (e.g., component-based, service-oriented, context for state).
-- **Data Flow:** Explain how data moves through the app. Use a primary user workflow as an example.
-- **State Management:** Detail the global state strategy (React Contexts) and local state usage.
+- **Core Philosophy:** Describe the main architectural patterns.
+- **Data Flow:** Explain how data moves through the app.
+- **State Management:** Detail the global and local state strategy.
 
 ## 4. Component Hierarchy Diagram
-A Mermaid.js graph visualizing how the components are interconnected.
-[INSERT_COMPONENT_HIERARCHY_DIAGRAM]
+**Analyze and describe the component relationships shown in the Mermaid diagram.** Explain how the main components are interconnected. After your explanation, embed the provided Mermaid diagram in a mermaid code block.
 
 ## 5. Service Layer Breakdown
-Describe each major service file (e.g., \`geminiService.ts\`, \`telemetry.service.ts\`) and its key responsibilities and functions.
+Describe each major service file and its key responsibilities.
 
 ## 6. Key Data Structures
-Explain the most important TypeScript types and interfaces from the \`types/\` directory.
+Explain the most important TypeScript types and interfaces.
 
 ---
-**PROJECT SOURCE CODE:**
+**PROVIDED DIAGRAMS & PROJECT SOURCE:**
+
+### File Tree Diagram:
+${fileTree}
+
+### Component Hierarchy (Mermaid):
+\`\`\`mermaid
+${componentDiagram}
+\`\`\`
+
+### Project Source Code:
 ${projectContext}
 ---
 `;
@@ -468,7 +475,7 @@ ${projectContext}
         return await withRetries(apiCall);
     } catch (error) {
         logFrontendError(error, ErrorSeverity.High, { context: 'generateProjectTome Gemini API call' });
-        throw new Error('Failed to generate Project Tome.');
+        throw error;
     }
 };
 
@@ -524,7 +531,7 @@ Then, if the image contains a character, creature, or object suitable for a 3D m
     return await withRetries(apiCall);
   } catch (error) {
     logFrontendError(error, ErrorSeverity.High, { context: 'analyzeImage Gemini API call' });
-    throw new Error('Failed to analyze the image. Please try again.');
+    throw error;
   }
 };
 
@@ -534,4 +541,66 @@ export const startChat = (history?: { role: string, parts: { text: string }[] }[
         model: 'gemini-2.5-flash',
         history: history
     });
+};
+
+export const generateApiDocumentation = async (projectContext: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+    const model = 'gemini-2.5-pro';
+    const prompt = `
+You are an expert technical writer specializing in API documentation. Your task is to analyze the provided source code and generate a comprehensive API reference document in Markdown format.
+
+Scan the code for API service calls (e.g., using \`fetch\`, or within service files like \`geminiService.ts\`). For each logical group of endpoints, create a section.
+
+For each endpoint (exported function making an external call), document the following:
+- **Endpoint:** The function name (e.g., \`performShunt\`).
+- **Description:** What does this function do?
+- **Parameters/Request Body:** What data does it accept? Describe the schema or arguments.
+- **Response:** What does a successful response look like? Describe the return type or schema.
+- **Example Usage:** Provide a brief code snippet showing how to call this function.
+
+Structure the entire output as a clean, readable Markdown document. If no API calls are found, state that clearly.
+
+---
+**PROJECT SOURCE CODE:**
+${projectContext}
+---
+`;
+    try {
+        return await generateRawText(prompt, model);
+    } catch (error) {
+        logFrontendError(error, ErrorSeverity.High, { context: 'generateApiDocumentation Gemini API call' });
+        throw error;
+    }
+};
+
+export const generateQualityReport = async (projectContext: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
+    const model = 'gemini-2.5-pro';
+    const prompt = `
+You are a senior code reviewer AI with an expert eye for code quality, performance, and best practices in React/TypeScript applications. Your task is to conduct a thorough review of the provided source code and generate a "Code Quality & Refactoring Report".
+
+Analyze the code for:
+- **Potential Bugs:** Logical errors, race conditions, null pointer issues.
+- **Performance Bottlenecks:** Inefficient loops, unnecessary re-renders, large bundle size contributors.
+- **Code Smells & Anti-patterns:** Prop drilling, large components, inconsistent coding styles.
+- **Refactoring Opportunities:** Areas where code can be simplified, made more reusable (e.g., custom hooks), or modernized.
+- **Security Vulnerabilities:** Basic checks for things like XSS if applicable.
+
+Structure your report in Markdown. For each issue or suggestion, provide:
+- **File & Location:** The full file path.
+- **Issue/Suggestion:** A clear description of the problem or improvement.
+- **Rationale:** Why it's an issue and why the change is recommended.
+- **Example (Optional):** A small code snippet showing the "before" and "after".
+
+If the code is of high quality, acknowledge that and highlight a few examples of good practices.
+
+---
+**PROJECT SOURCE CODE:**
+${projectContext}
+---
+`;
+    try {
+        return await generateRawText(prompt, model);
+    } catch (error) {
+        logFrontendError(error, ErrorSeverity.High, { context: 'generateQualityReport Gemini API call' });
+        throw error;
+    }
 };

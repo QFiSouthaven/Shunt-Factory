@@ -27,10 +27,15 @@ const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
         const renderChart = async () => {
             try {
                 // A more robust sanitizer that handles block-level tags to prevent syntax corruption.
-                const sanitizedChart = chart
+                let sanitizedChart = chart
                     .replace(/<br\s*\/?>/gi, '\n')
                     .replace(/<\/(p|div|h[1-6])>/gi, '\n')
                     .replace(/<[^>]*>/g, '');
+                
+                // Escape parentheses to prevent parsing errors with unquoted labels.
+                sanitizedChart = sanitizedChart
+                    .replace(/\(/g, '&#40;')
+                    .replace(/\)/g, '&#41;');
 
                 // Ensure mermaid is initialized
                  mermaid.initialize({
