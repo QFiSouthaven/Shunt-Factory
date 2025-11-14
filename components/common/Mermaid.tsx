@@ -26,16 +26,11 @@ const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
 
         const renderChart = async () => {
             try {
-                // A more robust sanitizer that handles block-level tags to prevent syntax corruption.
-                let sanitizedChart = chart
-                    .replace(/<br\s*\/?>/gi, '\n')
-                    .replace(/<\/(p|div|h[1-6])>/gi, '\n')
-                    .replace(/<[^>]*>/g, '');
-                
-                // Escape parentheses to prevent parsing errors with unquoted labels.
-                sanitizedChart = sanitizedChart
-                    .replace(/\(/g, '&#40;')
-                    .replace(/\)/g, '&#41;');
+                // Sanitize the chart string to remove potentially problematic HTML tags
+                // that an AI might have inserted. This version avoids injecting newlines
+                // which can break string literals in the Mermaid syntax. It replaces all
+                // HTML-like tags with a space.
+                const sanitizedChart = chart.replace(/<[^>]*>/g, ' ');
 
                 // Ensure mermaid is initialized
                  mermaid.initialize({
@@ -73,7 +68,7 @@ const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
                 }
                 console.error("Mermaid rendering error:", error);
                 if (containerRef.current) {
-                    containerRef.current.innerHTML = `<pre class="text-red-400">Error rendering diagram:\n${errorMessage}</pre>`;
+                    containerRef.current.innerHTML = `<pre class="text-red-400">Mermaid rendering error:\n${errorMessage}</pre>`;
                 }
             }
         };

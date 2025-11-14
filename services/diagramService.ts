@@ -67,10 +67,15 @@ export const generateComponentDiagram = (files: ProjectFile[]): string => {
             dependencies[parentComponent] = new Set();
         }
 
+        // Strip comments to avoid matching component-like syntax inside them
+        const contentWithoutComments = file.content
+            .replace(/\/\*[\s\S]*?\*\//g, '') // strip multiline comments
+            .replace(/\/\/.*/g, '');          // strip single line comments
+
         let match;
         // Reset regex state for each new file content being processed.
         componentRegex.lastIndex = 0;
-        while ((match = componentRegex.exec(file.content)) !== null) {
+        while ((match = componentRegex.exec(contentWithoutComments)) !== null) {
             const childComponent = match[1];
 
             // Explicitly skip self-references to prevent cycles.
