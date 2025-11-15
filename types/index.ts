@@ -46,6 +46,7 @@ export enum ShuntAction {
   MY_COMMAND = 'Analyze & Clarify',
   GENERATE_ORACLE_QUERY = 'Generate Oracle Query',
   REFINE_PROMPT = 'Refine Prompt',
+  CALL_TOOL = 'Call System Tool',
 }
 
 export enum PromptModuleKey {

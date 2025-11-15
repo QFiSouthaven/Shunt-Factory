@@ -2,32 +2,39 @@
 import { Documentation } from '../types';
 
 export const INITIAL_DOCUMENTATION: Documentation = {
-  geminiContext: `
-You are an expert software architect and lead frontend engineer for 'Project Hermes,' acting as a 'Strategy & Task Formulation' AI. Your primary goal is to deconstruct a user's high-level goal into a clear, actionable development plan for a code-generating AI. You will be held to the highest standards of code quality and architectural soundness. This project's AESTHETICS are defined by a minimalist, brutalist style.
+  geminiContext: `This document outlines the high-level technical architecture for the Aether Shunt platform. Its purpose is to bridge the gap between the strategic vision and the granular specifications required for implementation. This refined design incorporates direct feedback from the backend team by significantly expanding the API contracts with precise data types, explicit validation rules, and a standardized, exhaustive set of error responses. This addresses the need for an unambiguous specification, empowering the Builder Agent to construct exact service interfaces and validation logic.
 
-You will be given the project's context from existing files and a user's goal. Adhere to all rules in this document when creating your plan.
 
-**Technology Stack & Code Style:**
-*   You must use React, TypeScript, and Tailwind CSS. Do not use any other frameworks or CSS solutions. Do not use inline styles.
-*   All components must be functional components using React Hooks.
-*   All event handlers must be memoized with \`useCallback\`.
-*   All state must be managed via \`useReducer\` for components with more than two state variables.
-*   Do not use the \`any\` type in TypeScript.
-*   All TypeScript functions must include JSDoc comments.
-*   Do not use default exports.
+## Part I: Strategic Imperative & Core Positioning
 
-**Directory Structure:**
-*   All new components must be placed in the \`/components\` directory.
-*   All utility functions must be in \`/utils\`.
-*   You must include tasks to update the \`index.ts\` in these directories to export new modules.
+### 1.1 Market Positioning for the 2025 AI Developer Landscape
 
-**Reasoning & Output Requirements:**
-*   When you generate your specification, you must also include a 'dataSchema' section that defines all new or relevant data structures (e.g., TypeScript interfaces) for the request.
-*   Your output plan MUST be in the JSON format specified by the response schema.
+The market is shifting from simple AI assistance (code completion) to **Agentic Software Engineering**, where AI orchestrates the entire SDLC. Market data reveals that the highest-adoption AI use cases are not just "writing code" (44.1%) but higher-level processes like **"Deployment" (75.8%)** and **"Project planning" (65.6%)**.
 
-**Aesthetics & Quality Mandates:**
-*   In service of our 'AESTHETICS ARE VERY IMPORTANT' goal, you should favor dark mode friendly designs. For example, using CSS variables like \`--primary-bg: #1a1a1a; --secondary-bg: #2a2a2a; --text-color: #e0e0e0;\`.
-*   The plan must result in code that has offline functionality, responsiveness, accessibility (use ARIA attributes), and cross-browser compatibility. Prioritize clean, readable, well-organized, and performant code.
+This validates Aether Shunt's core strategy:
+
+*   **Lead with Plan-and-Execute:** The **Weaver** (planning) and **Foundry** (agentic design) modules are the core value proposition, targeting the market's primary pain points.
+*   **Position Shunt as a Utility:** The **Shunt** (text transformation) module is a powerful, integrated utility supporting the core workflow, not the primary product.
+*   **Define Market Identity:** Aether Shunt is not "a better copilot"; it is a **"next-generation, AI-native SDLC platform."**
+
+### 1.2 Addressing the "Speed vs. Trust Gap" and "Agent Washing" Threat
+
+The agentic AI market is facing a trust crisis. "Agent washing" has created a "verification bottleneck" where developers are swamped with low-quality AI output. Aether Shunt's greatest opportunity is to solve this.
+
+*   **Reject the "AI Agent" Label:** We will explicitly avoid positioning Aether Shunt as "just another AI agent."
+*   **Establish the "Verifiable Agentic Platform":** Our core market position is the industry's first verifiable platform.
+*   **Market Trust Features:** Every architectural component—from Zod validation (\`types/schemas.ts\`) to telemetry (\`telemetry.service.ts\`)—will be marketed as a trust feature that provides the "adequate risk controls" the market lacks.
+
+### 1.3 The Intelligent Application Mandate
+
+The future is not static SaaS but "Intelligent Applications" that learn and adapt. Aether Shunt is architected to become a "continuously learning system" that delivers active outcomes, not passive tools. This will be achieved through a **P0 (priority zero) initiative**:
+
+*   **Implement the "Telemetry -> Governance -> Generative UI" Loop:**
+    1.  **Data Fuel (\`telemetry.service.ts\`):** Capture \`InteractionEvents\` as historical data on user behavior.
+    2.  **Decision Engine (\`governanceApi.ts\`):** Ingest telemetry to make proactive decisions about user intent and workflow friction.
+    3.  **Adaptive Mechanism ("Mission Control" UI):** The governance API sends proactive UI modification directives (JSON) to the client, which the React Component-Based UI dynamically renders.
+
+This autonomous system is the key to achieving "unexpendable" status by transforming the application from a tool into a partner.
 `,
   progressLog: `
 # Progress Log

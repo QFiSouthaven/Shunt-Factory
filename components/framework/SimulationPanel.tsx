@@ -92,7 +92,6 @@ const SimulationPanel: React.FC<SimulationPanelProps> = ({ metrics, inspectorDat
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <StatCard label="Episode" value={`${metrics.episode} / ${hyperparameters.numEpisodes}`} />
                     <StatCard label="Avg Reward" value={metrics.avgReward.toFixed(2)} />
-                    {/* FIX: Replaced '.at(-1)' with array length indexing for backward compatibility. */}
                     <StatCard label="Last Reward" value={(metrics.rewardHistory[metrics.rewardHistory.length - 1]?.reward ?? 0).toFixed(2)} />
                     <StatCard label="Current Loss" value={metrics.loss.toFixed(4)} />
                 </div>

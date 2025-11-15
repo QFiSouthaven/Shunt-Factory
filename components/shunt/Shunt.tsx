@@ -29,6 +29,7 @@ import { useDebounce } from '../../hooks/useDebounce';
 import DocumentViewerModal from '../common/DocumentViewerModal';
 import { useLmStudio } from '../../hooks/useLmStudio';
 import Loader from '../Loader';
+import { executeTool, ExecutionContext, ToolResult } from '../../services/toolApi';
 
 const EvolveModal = lazy(() => import('./EvolveModal'));
 
@@ -129,6 +130,13 @@ Immediately following successful creation, the user is automatically redirected 
 **Step 5: User Confirmation**
 A non-intrusive success notification (e.g., a "toast" message) appears on the editor screen, confirming the action.
 *   *Example Message:* "Success! '*How to Configure the New Widget*' has been created. You can start writing now."`;
+
+const TOOL_DEMO_TEXT = JSON.stringify({
+  toolName: "read_file",
+  args: {
+    "path": "src/auth.js"
+  }
+}, null, 2);
 
 const MAX_INPUT_LENGTH = 600000;
 const RATE_LIMIT_COUNT = 5;
@@ -372,6 +380,44 @@ const Shunt: React.FC = () => {
     
     if (history.length === 0) {
         setInitialPrompt(textToProcess);
+    }
+
+    if (action === ShuntAction.CALL_TOOL) {
+        try {
+            const { toolName, args } = JSON.parse(textToProcess);
+            if (!toolName || typeof toolName !== 'string') {
+                throw new Error("Invalid input format. Missing or invalid 'toolName'.");
+            }
+            if (args === undefined) {
+                 throw new Error("Invalid input format. Missing 'args' object.");
+            }
+
+            const executionContext: ExecutionContext = {
+                agentId: 'shunt-direct-caller',
+                permissions: ['system:admin', 'filesystem:read', 'filesystem:write', 'scratchpad:write', 'vcs:read', 'vcs:stage', 'vcs:branch', 'vcs:commit', 'execution:tests', 'execution:scripts'],
+            };
+
+            const result: ToolResult = await executeTool(toolName, args, executionContext);
+            setOutputText(JSON.stringify(result, null, 2));
+            audioService.playSound(result.success ? 'receive' : 'error');
+            
+            telemetryService?.recordEvent({
+                eventType: 'system_action',
+                interactionType: 'tool_call',
+                tab: 'Shunt',
+                userInput: textToProcess.substring(0, 200),
+                aiOutput: JSON.stringify(result).substring(0, 200),
+                outcome: result.success ? 'success' : 'failure',
+                customData: { action, toolName, args }
+            });
+        } catch (e: any) {
+            const errorMessage = e instanceof SyntaxError ? "Invalid JSON in input." : e.message;
+            handleApiError({ message: errorMessage }, { context: 'Shunt.handleShunt.tool_call', action });
+        } finally {
+            setIsLoading(false);
+            setActiveShunt(null);
+        }
+        return;
     }
     
     const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(textToProcess) : textToProcess;
@@ -707,6 +753,7 @@ const Shunt: React.FC = () => {
                     onChange={handleInputChange}
                     onBlur={markAsTouched}
                     onPasteDemo={() => { setInputText(DEMO_TEXT); resetChain(); }}
+                    onPasteToolDemo={() => { setInputText(TOOL_DEMO_TEXT); resetChain(); }}
                     onFileLoad={handleFileLoad}
                     onClearFile={() => { setInputText(''); resetChain(); }}
                     error={isTouched ? errors.required || errors.maxLength : null}
@@ -773,6 +820,7 @@ const Shunt: React.FC = () => {
                         onChange={handleInputChange}
                         onBlur={markAsTouched}
                         onPasteDemo={() => { setInputText(DEMO_TEXT); resetChain(); }}
+                        onPasteToolDemo={() => { setInputText(TOOL_DEMO_TEXT); resetChain(); }}
                         onFileLoad={handleFileLoad}
                         onClearFile={() => { setInputText(''); resetChain(); }}
                         error={isTouched ? errors.required || errors.maxLength : null}

@@ -7,7 +7,8 @@ import {
     BookIcon, CodeIcon, EditIcon, JsonIcon, KeywordsIcon, SmileIcon, 
     TieIcon, SparklesIcon, AmplifyIcon, BrainIcon, FeatherIcon, 
     JsonToTextIcon, ActionableIcon, PuzzlePieceIcon, PhotoIcon, 
-    EntityIcon, DocumentChartBarIcon, BranchingIcon, GlobeAltIcon
+    EntityIcon, DocumentChartBarIcon, BranchingIcon, GlobeAltIcon,
+    CpuChipIcon
 } from '../components/icons';
 
 
@@ -79,9 +80,10 @@ export const shuntActionsConfig: { action: ShuntAction; icon: React.ReactNode; g
   { action: ShuntAction.GENERATE_VAM_PRESET, icon: React.createElement(DocumentChartBarIcon, { className: "w-5 h-5" }), group: 'Data' },
   { action: ShuntAction.PARSE_JSON, icon: React.createElement(JsonToTextIcon, { className: "w-5 h-5" }), group: 'Data' },
   { action: ShuntAction.INTERPRET_SVG, icon: React.createElement(PhotoIcon, { className: "w-5 h-5" }), group: 'Data' },
+  { action: ShuntAction.CALL_TOOL, icon: React.createElement(CpuChipIcon, { className: "w-5 h-5" }), group: 'Developer' },
 ];
 
-export const actionGroups = ['Content', 'Explanation', 'Keywords', 'Tone', 'Quality', 'Data'];
+export const actionGroups = ['Content', 'Explanation', 'Keywords', 'Tone', 'Quality', 'Data', 'Developer'];
 
 
 export const getPromptForAction = (text: string, action: ShuntAction, context?: string, priority?: string, promptInjectionGuardEnabled: boolean = true): string => {
@@ -339,6 +341,10 @@ What are the most profound questions that remain? What are the next logical step
 A brief, concluding thought on the profound implications of this topic.`;
       break;
     default:
+      // For CALL_TOOL, we don't need a prompt, but we need to satisfy the switch.
+      if (action === ShuntAction.CALL_TOOL) {
+        return '';
+      }
       throw new Error('Unknown shunt action');
   }
 
@@ -368,6 +374,7 @@ export const shuntActionDescriptions: Record<ShuntAction, string> = {
   [ShuntAction.MY_COMMAND]: 'Performs a meta-analysis on a user request, identifying ambiguities, contradictions, or missing information and asks clarifying questions to refine it.',
   [ShuntAction.GENERATE_ORACLE_QUERY]: 'Takes a simple topic and transforms it into a "god-tier" multi-disciplinary research prompt designed to elicit deep, comprehensive insights from an AI.',
   [ShuntAction.REFINE_PROMPT]: 'Enhances a user-provided prompt by adding structure, clarity, and specific instructions to improve the quality of the AI\'s response.',
+  [ShuntAction.CALL_TOOL]: 'Executes a system tool directly. Input must be a JSON object: { "toolName": "...", "args": { ... } }.',
 };
 
 export const constructModularPrompt = (text: string, modules: Set<PromptModuleKey>, context?: string, priority?: string, promptInjectionGuardEnabled: boolean = true): string => {

@@ -20,9 +20,10 @@ interface InputPanelProps {
   onToggleMinimize?: () => void;
   priority: string;
   onPriorityChange: (priority: string) => void;
+  onPasteToolDemo: () => void;
 }
 
-const InputPanel: React.FC<InputPanelProps> = ({ value, onChange, onBlur, onPasteDemo, onFileLoad, onClearFile, error, maxLength, isLoading, onToggleScratchpad, isMinimized, onToggleMinimize, priority, onPriorityChange }) => {
+const InputPanel: React.FC<InputPanelProps> = ({ value, onChange, onBlur, onPasteDemo, onFileLoad, onClearFile, error, maxLength, isLoading, onToggleScratchpad, isMinimized, onToggleMinimize, priority, onPriorityChange, onPasteToolDemo }) => {
   const hasError = !!error;
 
   const handleFilesUploaded = (files: Array<{ filename: string; content: string; file: File }>) => {
@@ -83,6 +84,13 @@ const InputPanel: React.FC<InputPanelProps> = ({ value, onChange, onBlur, onPast
                 className="text-xs bg-fuchsia-600/50 text-fuchsia-200 px-2 py-1 rounded hover:bg-fuchsia-600/80 transition-colors"
             >
                 Paste Demo Text
+            </button>
+            <button
+                onClick={onPasteToolDemo}
+                title="Load a sample tool call into the input panel"
+                className="text-xs bg-cyan-600/50 text-cyan-200 px-2 py-1 rounded hover:bg-cyan-600/80 transition-colors"
+            >
+                Paste Tool Demo
             </button>
          </div>
       </div>
