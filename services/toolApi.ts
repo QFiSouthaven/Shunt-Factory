@@ -1,11 +1,28 @@
 // services/toolApi.ts
+// TRUST ARCHITECTURE: RBAC Tool Execution Service
+//
+// Implements Role-Based Access Control (RBAC) for agent tool execution.
+// Enforces the "principle of least privilege" - agents can ONLY use tools
+// specified in their allowedTools array, even if the AI hallucinates and
+// attempts to use unauthorized tools.
+//
+// Strategic Importance:
+// - Addresses the "inadequate risk controls" that cause 40% of agentic AI failures
+// - Makes security posture explicit, auditable, and marketable
+// - Prevents "CodeAuditor" agents from writing files (even if AI tries)
+// - Prevents "Planner" agents from executing code (enforces read-only planning)
+//
 import { createPatch } from 'diff';
+import { ToolName, FoundryAgent } from '../types';
 
 // --- v3 Architecture: Interfaces & Types ---
 
 export interface ExecutionContext {
     agentId: string;
-    permissions: string[];
+    permissions: string[]; // Legacy: for backward compatibility
+
+    // NEW: RBAC-aware execution context
+    agent?: FoundryAgent; // If provided, use agent.allowedTools for RBAC
 }
 
 export interface StructuredError {
@@ -257,11 +274,55 @@ export async function executeTool(toolName: string, args: any, context: Executio
         return { success: false, data: null, error: { type: 'NOT_FOUND', message: `Tool '${toolName}' not found.`, details: null } };
     }
 
-    // 1. Authorization Check
-    const requiredPermissions = tool.getRequiredPermissions();
-    const missingPermissions = requiredPermissions.filter(p => !context.permissions.includes(p));
-    if (missingPermissions.length > 0) {
-        return { success: false, data: null, error: { type: 'AUTHORIZATION', message: `Agent lacks required permissions.`, details: { required: requiredPermissions, missing: missingPermissions } } };
+    // 1. RBAC Authorization Check (TRUST ARCHITECTURE)
+    //
+    // Two enforcement modes:
+    // Mode A: Agent-based RBAC (new) - uses agent.allowedTools
+    // Mode B: Permission-based (legacy) - uses context.permissions
+    //
+    if (context.agent) {
+        // Mode A: RBAC via agent.allowedTools (strategic priority)
+        // This is the "Secure by Design" approach from the strategic plan
+
+        const typedToolName = toolName as ToolName; // Cast for type safety
+
+        if (!context.agent.allowedTools.includes(typedToolName)) {
+            // RBAC VIOLATION: Agent attempted to use unauthorized tool
+            return {
+                success: false,
+                data: null,
+                error: {
+                    type: 'AUTHORIZATION',
+                    message: `RBAC Violation: Agent '${context.agent.name}' with role '${context.agent.role}' is not authorized to use tool '${toolName}'.`,
+                    details: {
+                        agentName: context.agent.name,
+                        agentRole: context.agent.role,
+                        attemptedTool: toolName,
+                        allowedTools: context.agent.allowedTools,
+                        rbacMode: 'agent-based',
+                    }
+                }
+            };
+        }
+    } else {
+        // Mode B: Legacy permission-based authorization
+        const requiredPermissions = tool.getRequiredPermissions();
+        const missingPermissions = requiredPermissions.filter(p => !context.permissions.includes(p));
+        if (missingPermissions.length > 0) {
+            return {
+                success: false,
+                data: null,
+                error: {
+                    type: 'AUTHORIZATION',
+                    message: `Agent lacks required permissions.`,
+                    details: {
+                        required: requiredPermissions,
+                        missing: missingPermissions,
+                        rbacMode: 'permission-based',
+                    }
+                }
+            };
+        }
     }
 
     // 2. Input Validation (Simplified for demo)
