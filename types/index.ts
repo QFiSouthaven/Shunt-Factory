@@ -126,19 +126,64 @@ export interface MiaAlert {
 }
 
 
-// New types for Foundry
-export type AgentName = 'Architect' | 'Refactor' | 'Security' | 'QA' | 'UX' | 'DevOps' | 'Backend';
-export type AgentStatus = 'Idle' | 'Auditing' | 'Designing' | 'Reviewing' | 'Refining' | 'Done';
+// TRUST ARCHITECTURE: Foundry Agent Types (CrewAI-Inspired Hierarchical Model)
+//
+// These types align with the CrewAI architectural pattern for Level 4 multi-agent systems.
+// Strategic Importance:
+// - Enables auditable, hierarchical agentic workflows (not "agent-washed" chatbots)
+// - Supports RBAC tooling for "principle of least privilege"
+// - Required for Foundry's "manager agent" self-review capability
+//
+export type AgentName = 'Architect' | 'Refactor' | 'Security' | 'QA' | 'UX' | 'DevOps' | 'Backend' | 'CodeAuditor' | 'CodeDeveloper' | 'Planner' | 'Manager';
+export type AgentStatus = 'Idle' | 'Auditing' | 'Designing' | 'Reviewing' | 'Refining' | 'Executing' | 'Validating' | 'Done';
+
+// Tool names for RBAC enforcement
+export type ToolName = 'read_file' | 'write_file' | 'git.commit_changes' | 'execute_code' | 'search_codebase';
+
 export interface FoundryAgent {
+    // Original fields (backward compatibility)
     name: AgentName;
     status: AgentStatus;
     designScore?: number;
     currentTask?: string;
     auditFindings?: string;
     design?: string;
+
+    // NEW: CrewAI-inspired fields for Level 4 agency
+    /**
+     * The agent's role - defines its persona and purpose
+     * Example: "Senior Security Auditor", "Frontend Architect", "Code Reviewer"
+     */
+    role: string;
+
+    /**
+     * The agent's goal - what it's trying to achieve
+     * Example: "Review the authentication module for security vulnerabilities"
+     */
+    goal: string;
+
+    /**
+     * The agent's backstory - provides context and expertise
+     * Example: "You are a security expert with 10 years of experience in penetration testing..."
+     */
+    backstory: string;
+
+    /**
+     * Tools this agent is allowed to use (RBAC enforcement)
+     * Example: ["read_file"] for CodeAuditor, ["read_file", "write_file", "git.commit_changes"] for CodeDeveloper
+     */
+    allowedTools: ToolName[];
+
+    /**
+     * Whether this agent is a "manager agent" (for hierarchical process)
+     * Manager agents review outputs from subordinate agents
+     */
+    isManager?: boolean;
 }
-export type FoundryPhase = 'Idle' | 'Audit' | 'Design' | 'Review' | 'Converged';
-export type LogEntryType = 'PHASE' | 'SUCCESS' | 'DECISION' | 'INFO';
+
+export type FoundryPhase = 'Idle' | 'Audit' | 'Design' | 'Review' | 'Execution' | 'Validation' | 'Converged';
+export type FoundryProcessType = 'Sequential' | 'Hierarchical'; // Maps to CrewAI process types
+export type LogEntryType = 'PHASE' | 'SUCCESS' | 'DECISION' | 'INFO' | 'RBAC_VIOLATION' | 'VALIDATION';
 
 export interface LogEntry {
     id: string;
