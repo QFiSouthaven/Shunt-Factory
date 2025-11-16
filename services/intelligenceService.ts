@@ -262,25 +262,58 @@ export class IntelligenceService {
   /**
    * Generate vector embedding for text
    *
-   * NOTE: This is a placeholder. In production, use Gemini's text-embedding-004 model
-   * or a dedicated embedding service.
+   * TRUST ARCHITECTURE: Real semantic embeddings using Xenova Transformers
+   * Runs entirely in the browser - no backend required!
    *
-   * Current implementation: Simple hash-based embedding (not semantic)
-   * TODO: Replace with actual embedding model when backend is available
+   * Model: all-MiniLM-L6-v2 (384 dimensions, fast, accurate)
+   * Performance: ~50ms per embedding on modern browsers
    */
-  private async generateEmbedding(text: string): Promise<number[]> {
-    // TEMPORARY: Simple hash-based embedding (768 dimensions to match common models)
-    // This is NOT semantic - just a placeholder for the architecture
-    const embedding: number[] = new Array(768).fill(0);
+  private embeddingPipeline: any = null;
 
-    // Simple hash function to generate pseudo-embedding
+  private async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      // Lazy-load the embedding model
+      if (!this.embeddingPipeline) {
+        const { pipeline } = await import('@xenova/transformers');
+        this.embeddingPipeline = await pipeline(
+          'feature-extraction',
+          'Xenova/all-MiniLM-L6-v2'
+        );
+      }
+
+      // Truncate text to model's token limit (~512 tokens ≈ 2000 chars)
+      const truncatedText = text.slice(0, 2000);
+
+      // Generate embedding
+      const output = await this.embeddingPipeline(truncatedText, {
+        pooling: 'mean',
+        normalize: true,
+      });
+
+      // Convert tensor to array
+      return Array.from(output.data);
+    } catch (error) {
+      logFrontendError(error, ErrorSeverity.High, {
+        context: 'IntelligenceService.generateEmbedding (Transformers)',
+      });
+
+      // Fallback to simple hash-based embedding if transformers fail
+      return this.generateFallbackEmbedding(text);
+    }
+  }
+
+  /**
+   * Fallback embedding (hash-based) if transformers fail to load
+   */
+  private generateFallbackEmbedding(text: string): number[] {
+    const embedding: number[] = new Array(384).fill(0); // Match model dimension
+
     for (let i = 0; i < text.length; i++) {
       const charCode = text.charCodeAt(i);
-      const index = (charCode + i) % 768;
+      const index = (charCode + i) % 384;
       embedding[index] += charCode / 1000;
     }
 
-    // Normalize to unit vector
     const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
     return embedding.map(val => val / (magnitude || 1));
   }
