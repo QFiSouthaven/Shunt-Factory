@@ -30,6 +30,7 @@ import DocumentViewerModal from '../common/DocumentViewerModal';
 import { useLmStudio } from '../../hooks/useLmStudio';
 import Loader from '../Loader';
 import { executeTool, ExecutionContext, ToolResult } from '../../services/toolApi';
+import FlowDiagram from './FlowDiagram';
 
 const EvolveModal = lazy(() => import('./EvolveModal'));
 
@@ -182,6 +183,7 @@ const Shunt: React.FC = () => {
     output: false,
     control: false,
     lifecycle: false,
+    flow: false,
   });
   const [guideStatus, setGuideStatus] = useState<'visible' | 'fading' | 'hidden'>('visible');
   const [mobileActiveView, setMobileActiveView] = useState<'input' | 'controls' | 'output'>('input');
@@ -871,16 +873,23 @@ const Shunt: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Panel: Prompt Lifecycle */}
-      <div className="flex-shrink-0 p-4 md:px-6 md:pb-2">
+      {/* Bottom Panels: Prompt Lifecycle & Flow Diagram */}
+      <div className="flex-shrink-0 p-4 md:px-6 md:pb-2 space-y-4">
         <PromptLifecyclePanel
             history={history}
             initialPrompt={initialPrompt}
             isMinimized={panelStates.lifecycle}
             onToggleMinimize={() => togglePanel('lifecycle')}
         />
+
+        <div className="h-[400px]">
+          <FlowDiagram
+            isMinimized={panelStates.flow}
+            onToggleMinimize={() => togglePanel('flow')}
+          />
+        </div>
       </div>
-      
+
       <Scratchpad
         isVisible={isScratchpadVisible}
         onClose={() => setIsScratchpadVisible(false)}
