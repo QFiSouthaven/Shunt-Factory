@@ -22,6 +22,22 @@ const AGENT_NAMES: AgentName[] = ['Architect', 'Refactor', 'Security', 'QA', 'UX
 const initialAgents: FoundryAgent[] = AGENT_NAMES.map(name => ({
     name,
     status: 'Idle',
+    role: name === 'Architect' ? 'System Design Architect' :
+          name === 'Refactor' ? 'Code Quality Engineer' :
+          name === 'Security' ? 'Security Auditor' :
+          name === 'QA' ? 'Quality Assurance Engineer' :
+          name === 'UX' ? 'UX/UI Designer' :
+          name === 'DevOps' ? 'DevOps Engineer' :
+          'Backend Engineer',
+    goal: `Contribute expertise in ${name === 'Architect' ? 'system design and scalability' :
+                                     name === 'Refactor' ? 'code quality and maintainability' :
+                                     name === 'Security' ? 'security and compliance' :
+                                     name === 'QA' ? 'quality assurance and testability' :
+                                     name === 'UX' ? 'user experience and interface design' :
+                                     name === 'DevOps' ? 'infrastructure and deployment' :
+                                     'backend development'} to the project`,
+    backstory: `You are a specialized ${name} agent with deep expertise in your domain.`,
+    allowedTools: ['read_file', 'search_codebase'],
 }));
 
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -82,7 +98,7 @@ const Foundry: React.FC = () => {
         // Reset state
         setLog([]);
         setFinalPlan(null);
-        setAgents(AGENT_NAMES.map(name => ({ name, status: 'Idle' })));
+        setAgents(initialAgents);
         
         // --- AUDIT PHASE ---
         setPhase('Audit');
