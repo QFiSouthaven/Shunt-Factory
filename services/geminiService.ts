@@ -7,6 +7,8 @@ import { ShuntAction, GeminiResponse, TokenUsage, ImplementationTask, PromptModu
 import { getPromptForAction, constructModularPrompt } from './prompts';
 import { logFrontendError, ErrorSeverity } from "../utils/errorLogger";
 import { withRetries } from './apiUtils';
+// TRUST ARCHITECTURE: Double Validation - Import Zod schemas for runtime validation
+import { geminiDevelopmentPlanResponseSchema } from '../types/schemas';
 
 
 const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenUsage => {
@@ -396,21 +398,21 @@ ${goal}
 
         const tokenUsage = mapTokenUsage(response, model);
         const jsonText = response.text;
+
+        // TRUST ARCHITECTURE: Double Validation Pattern
+        // Generation-Time Validation: responseSchema enforces structure at API level
+        // Runtime Validation: Zod schema validates after receiving response
         const parsedResponse = JSON.parse(jsonText);
+        const validatedResponse = geminiDevelopmentPlanResponseSchema.parse(parsedResponse);
 
         return {
-            clarifyingQuestions: [],
-            architecturalProposal: '',
-            implementationTasks: [],
-            testCases: [],
-            dataSchema: '',
-            ...parsedResponse,
+            ...validatedResponse,
             tokenUsage,
         };
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateDevelopmentPlan Gemini API call' });
+    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateDevelopmentPlan Gemini API call (Double Validation Failed)' });
     throw error;
   }
 }
