@@ -32,6 +32,8 @@ interface ControlPanelProps {
   onToggleMinimize?: () => void;
   isChainMode: boolean;
   onChainModeChange: (enabled: boolean) => void;
+  isMultiAgentMode?: boolean;
+  onMultiAgentModeChange?: (enabled: boolean) => void;
 }
 
 interface PromptPreset {
@@ -41,7 +43,7 @@ interface PromptPreset {
 const PRESETS_STORAGE_KEY = 'aether-shunt-module-presets';
 
 
-const ControlPanel: React.FC<ControlPanelProps> = ({ onShunt, onModularShunt, onCombinedShunt, isLoading, activeShunt, selectedModel, onModelChange, showAmplifyX2, onAmplifyX2, usage, tierDetails, isMinimized, onToggleMinimize, isChainMode, onChainModeChange }) => {
+const ControlPanel: React.FC<ControlPanelProps> = ({ onShunt, onModularShunt, onCombinedShunt, isLoading, activeShunt, selectedModel, onModelChange, showAmplifyX2, onAmplifyX2, usage, tierDetails, isMinimized, onToggleMinimize, isChainMode, onChainModeChange, isMultiAgentMode, onMultiAgentModeChange }) => {
   const [selectedModules, setSelectedModules] = useState<Set<PromptModuleKey>>(new Set());
   const [presets, setPresets] = useState<PromptPreset[]>([]);
   const [selectedPresetName, setSelectedPresetName] = useState('custom');
@@ -251,6 +253,21 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onShunt, onModularShunt, on
                 <p className="text-xs text-gray-500 pl-2 mt-2">
                     Automatically feeds output back to the input for a continuous, iterative workflow.
                 </p>
+
+                {onMultiAgentModeChange && (
+                    <>
+                        <ToggleSwitch
+                            id="multi-agent-mode-toggle"
+                            label="Multi-Agent Mode"
+                            checked={isMultiAgentMode || false}
+                            onChange={onMultiAgentModeChange}
+                            disabled={isLoading}
+                        />
+                        <p className="text-xs text-gray-500 pl-2 mt-2">
+                            Uses Gemini 2.0 orchestration + Gemini 2.5 Pro validation + Claude Code peer review for highest quality output.
+                        </p>
+                    </>
+                )}
             </div>
 
             {/* Shunt Actions */}

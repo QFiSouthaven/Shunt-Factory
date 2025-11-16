@@ -88,7 +88,9 @@ export class FlowTrackingService {
     if (!session) return;
 
     // Transform event into flow nodes and edges based on event type
-    if (event.eventType === 'ai_response' && event.interactionType === 'shunt_action') {
+    if (event.eventType === 'ai_response' && event.interactionType === 'multi_agent_workflow') {
+      this.addMultiAgentFlow(session, event);
+    } else if (event.eventType === 'ai_response' && event.interactionType === 'shunt_action') {
       this.addShuntFlow(session, event);
     } else if (event.eventType === 'system_action' && event.interactionType === 'tool_call') {
       this.addToolFlow(session, event);
@@ -171,6 +173,87 @@ export class FlowTrackingService {
 
     // Add to session
     session.flows.nodes.push(inputNode, actionNode, outputNode);
+    session.flows.edges.push(edge1, edge2);
+
+    this.lastNodeId = outputNode.id;
+    this.nodeCounter++;
+  }
+
+  /**
+   * Add a Multi-Agent Workflow flow: showing orchestration stages
+   */
+  private addMultiAgentFlow(session: FlowSession, event: InteractionEvent): void {
+    const flowId = `flow-${this.nodeCounter}`;
+    const workflowSteps = event.customData?.workflowSteps || 12; // Default to 12 stages
+
+    // Node 1: User Input
+    const inputNode: FlowNode = {
+      id: `${flowId}-input`,
+      type: 'input',
+      position: this.calculatePosition('input'),
+      data: {
+        label: this.truncateText(event.userInput as string || 'User Input', 40),
+        eventType: 'user_input',
+        timestamp: event.timestamp,
+        details: { fullText: event.userInput }
+      }
+    };
+
+    // Node 2: Multi-Agent Orchestrator
+    const orchestratorNode: FlowNode = {
+      id: `${flowId}-orchestrator`,
+      type: 'default',
+      position: this.calculatePosition('action'),
+      data: {
+        label: `Multi-Agent Workflow\n(${workflowSteps} stages)`,
+        eventType: 'multi_agent_orchestrator',
+        timestamp: event.timestamp,
+        details: {
+          workflowSteps,
+          agreement: event.customData?.agreement,
+          validationPassed: event.customData?.validationPassed
+        }
+      }
+    };
+
+    // Node 3: AI Output (with validation badges)
+    const validationBadge = event.customData?.validationPassed ? '✓' : '✗';
+    const agreementBadge = event.customData?.agreement ? '✓' : '✗';
+    const outputNode: FlowNode = {
+      id: `${flowId}-output`,
+      type: 'output',
+      position: this.calculatePosition('output'),
+      data: {
+        label: `Multi-Agent Output\nValidation: ${validationBadge} Agreement: ${agreementBadge}`,
+        eventType: 'multi_agent_output',
+        timestamp: event.timestamp,
+        details: {
+          fullText: event.aiOutput,
+          outcome: event.outcome,
+          tokenUsage: event.tokenUsage
+        }
+      }
+    };
+
+    // Edges
+    const edge1: FlowEdge = {
+      id: `${flowId}-edge1`,
+      source: inputNode.id,
+      target: orchestratorNode.id,
+      animated: true,
+      label: 'delegate'
+    };
+
+    const edge2: FlowEdge = {
+      id: `${flowId}-edge2`,
+      source: orchestratorNode.id,
+      target: outputNode.id,
+      animated: true,
+      label: 'validated'
+    };
+
+    // Add to session
+    session.flows.nodes.push(inputNode, orchestratorNode, outputNode);
     session.flows.edges.push(edge1, edge2);
 
     this.lastNodeId = outputNode.id;

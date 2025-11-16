@@ -31,6 +31,7 @@ import { useLmStudio } from '../../hooks/useLmStudio';
 import Loader from '../Loader';
 import { executeTool, ExecutionContext, ToolResult } from '../../services/toolApi';
 import FlowDiagram from './FlowDiagram';
+import { MultiAgentOrchestrator } from '../../services/multiAgentOrchestrator.service';
 
 const EvolveModal = lazy(() => import('./EvolveModal'));
 
@@ -194,6 +195,12 @@ const Shunt: React.FC = () => {
         return saved ? JSON.parse(saved) : false;
     } catch { return false; }
   });
+  const [isMultiAgentMode, setIsMultiAgentMode] = useState(() => {
+    try {
+        const saved = localStorage.getItem('shunt_isMultiAgentMode');
+        return saved ? JSON.parse(saved) : false;
+    } catch { return false; }
+  });
   const [isEvolveModalOpen, setIsEvolveModalOpen] = useState(false);
 
   const shuntContainerRef = useRef<HTMLDivElement>(null);
@@ -231,6 +238,7 @@ const Shunt: React.FC = () => {
   const debouncedScratchpadContent = useDebounce(scratchpadContent, 500);
   const debouncedBulletinDocuments = useDebounce(bulletinDocuments, 500);
   const debouncedIsChainMode = useDebounce(isChainMode, 500);
+  const debouncedIsMultiAgentMode = useDebounce(isMultiAgentMode, 500);
 
   // Persist state to localStorage using debounced values
   useEffect(() => { localStorage.setItem('shunt_inputText', debouncedInputText); }, [debouncedInputText]);
@@ -241,7 +249,8 @@ const Shunt: React.FC = () => {
   useEffect(() => { localStorage.setItem('shunt_scratchpadContent', debouncedScratchpadContent); }, [debouncedScratchpadContent]);
   useEffect(() => { localStorage.setItem('shunt_bulletinDocuments', JSON.stringify(debouncedBulletinDocuments)); }, [debouncedBulletinDocuments]);
   useEffect(() => { localStorage.setItem('shunt_isChainMode', JSON.stringify(debouncedIsChainMode)); }, [debouncedIsChainMode]);
-  
+  useEffect(() => { localStorage.setItem('shunt_isMultiAgentMode', JSON.stringify(debouncedIsMultiAgentMode)); }, [debouncedIsMultiAgentMode]);
+
 
   useEffect(() => {
     if (outputText && !isLoading && window.innerWidth < 1280) {
@@ -424,6 +433,48 @@ const Shunt: React.FC = () => {
     
     const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(textToProcess) : textToProcess;
     const bulletinContext = getBulletinContext();
+
+    // MULTI-AGENT WORKFLOW: Use orchestrator if enabled
+    if (isMultiAgentMode) {
+        try {
+            const orchestrator = new MultiAgentOrchestrator(action);
+            const result = await orchestrator.execute(sanitizedText, bulletinContext);
+
+            setOutputText(result.finalOutput);
+            setLastTokenUsage(result.totalTokenUsage);
+            audioService.playSound('receive');
+
+            incrementUsage('shuntRuns');
+
+            telemetryService?.recordEvent({
+                eventType: 'ai_response',
+                interactionType: 'multi_agent_workflow',
+                tab: 'Shunt',
+                userInput: textToProcess.substring(0, 200),
+                aiOutput: result.finalOutput.substring(0, 200),
+                outcome: 'success',
+                tokenUsage: result.totalTokenUsage ?? undefined,
+                modelUsed: 'multi-agent',
+                customData: {
+                    action,
+                    priority,
+                    workflowSteps: result.workflowSteps.length,
+                    agreement: result.agreement,
+                    validationPassed: result.validationPassed
+                }
+            });
+
+            console.log(`[MultiAgent] Workflow completed with ${result.workflowSteps.length} steps`);
+
+        } catch (e: any) {
+            const telemetryContext = { context: 'Shunt.handleShunt.multiAgent', action, priority };
+            handleApiError(e, telemetryContext);
+        } finally {
+            setIsLoading(false);
+            setActiveShunt(null);
+        }
+        return;
+    }
 
     try {
         const { resultText, tokenUsage } = await performShunt(sanitizedText, action as ShuntAction, selectedModel, bulletinContext, priority, settings.promptInjectionGuardEnabled);
@@ -785,6 +836,8 @@ const Shunt: React.FC = () => {
                     onToggleMinimize={() => togglePanel('control')}
                     isChainMode={isChainMode}
                     onChainModeChange={setIsChainMode}
+                    isMultiAgentMode={isMultiAgentMode}
+                    onMultiAgentModeChange={setIsMultiAgentMode}
                 />
             </div>
             <div className="flex flex-col overflow-y-auto">
@@ -853,6 +906,8 @@ const Shunt: React.FC = () => {
                     onToggleMinimize={() => togglePanel('control')}
                     isChainMode={isChainMode}
                     onChainModeChange={setIsChainMode}
+                    isMultiAgentMode={isMultiAgentMode}
+                    onMultiAgentModeChange={setIsMultiAgentMode}
                 />
             )}
             {mobileActiveView === 'output' && (
