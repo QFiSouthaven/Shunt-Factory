@@ -6,19 +6,21 @@ import { InteractionEvent } from '../types/telemetry';
 import { appEventBus } from '../lib/eventBus';
 import { Node, Edge } from 'reactflow';
 
-export interface FlowNode extends Node {
+export interface FlowNodeData {
+  label: string;
+  eventType: string;
+  timestamp: string;
+  details?: Record<string, unknown>;
+}
+
+export interface FlowNode extends Node<FlowNodeData> {
   id: string;
   type: string;
   position: { x: number; y: number };
-  data: {
-    label: string;
-    eventType: string;
-    timestamp: string;
-    details?: any;
-  };
+  data: FlowNodeData;
 }
 
-export interface FlowEdge extends Edge {
+export interface FlowEdge {
   id: string;
   source: string;
   target: string;
