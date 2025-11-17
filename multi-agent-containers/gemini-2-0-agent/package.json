@@ -1,0 +1,26 @@
+{
+  "name": "gemini-2-0-agent",
+  "version": "1.0.0",
+  "description": "Gemini 2.0 task orchestration agent",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.28.0",
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "winston": "^3.17.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.14.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.8.2"
+  }
+}

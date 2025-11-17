@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  database:
+    image: postgres:16-alpine
+    container_name: workflow-database
+    environment:
+      POSTGRES_DB: workflow_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - multi-agent-network
+
+  # Claude Code Agent
+  claude-agent:
+    build:
+      context: ./claude-agent
+      dockerfile: Dockerfile
+    container_name: claude-agent
+    ports:
+      - "8091:8091"
+    environment:
+      - PORT=8091
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      - database
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - multi-agent-network
+    restart: unless-stopped
+
+  # Gemini 2.0 Agent
+  gemini-2-0-agent:
+    build:
+      context: ./gemini-2-0-agent
+      dockerfile: Dockerfile
+    container_name: gemini-2-0-agent
+    ports:
+      - "8092:8092"
+    environment:
+      - PORT=8092
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - database
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8092/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - multi-agent-network
+    restart: unless-stopped
+
+  # Gemini 2.5 Pro Agent
+  gemini-2-5-agent:
+    build:
+      context: ./gemini-2-5-agent
+      dockerfile: Dockerfile
+    container_name: gemini-2-5-agent
+    ports:
+      - "8093:8093"
+    environment:
+      - PORT=8093
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - database
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8093/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - multi-agent-network
+    restart: unless-stopped
+
+  # Orchestrator
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: orchestrator
+    ports:
+      - "8090:8090"
+    environment:
+      - PORT=8090
+      - DATABASE_URL=postgresql://postgres:password@database:5432/workflow_db
+      - CLAUDE_AGENT_URL=http://claude-agent:8091
+      - GEMINI_2_0_AGENT_URL=http://gemini-2-0-agent:8092
+      - GEMINI_2_5_AGENT_URL=http://gemini-2-5-agent:8093
+    depends_on:
+      database:
+        condition: service_healthy
+      claude-agent:
+        condition: service_healthy
+      gemini-2-0-agent:
+        condition: service_healthy
+      gemini-2-5-agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - multi-agent-network
+    restart: unless-stopped
+
+networks:
+  multi-agent-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
