@@ -6,7 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "build:dev": "VITE_APP_ENV=development vite build",
+    "build:staging": "VITE_APP_ENV=staging vite build",
+    "build:prod": "VITE_APP_ENV=production vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist node_modules/.vite",
+    "analyze": "vite-bundle-visualizer"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
