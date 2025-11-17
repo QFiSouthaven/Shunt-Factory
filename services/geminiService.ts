@@ -7,6 +7,8 @@ import { ShuntAction, GeminiResponse, TokenUsage, ImplementationTask, PromptModu
 import { getPromptForAction, constructModularPrompt } from './prompts';
 import { logFrontendError, ErrorSeverity } from "../utils/errorLogger";
 import { withRetries } from './apiUtils';
+// TRUST ARCHITECTURE: Double Validation - Import Zod schemas for runtime validation
+import { geminiDevelopmentPlanResponseSchema } from '../types/schemas';
 
 
 const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenUsage => {
@@ -396,21 +398,21 @@ ${goal}
 
         const tokenUsage = mapTokenUsage(response, model);
         const jsonText = response.text;
+
+        // TRUST ARCHITECTURE: Double Validation Pattern
+        // Generation-Time Validation: responseSchema enforces structure at API level
+        // Runtime Validation: Zod schema validates after receiving response
         const parsedResponse = JSON.parse(jsonText);
+        const validatedResponse = geminiDevelopmentPlanResponseSchema.parse(parsedResponse);
 
         return {
-            clarifyingQuestions: [],
-            architecturalProposal: '',
-            implementationTasks: [],
-            testCases: [],
-            dataSchema: '',
-            ...parsedResponse,
+            ...validatedResponse,
             tokenUsage,
         };
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateDevelopmentPlan Gemini API call' });
+    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateDevelopmentPlan Gemini API call (Double Validation Failed)' });
     throw error;
   }
 }
@@ -601,6 +603,53 @@ ${projectContext}
         return await generateRawText(prompt, model);
     } catch (error) {
         logFrontendError(error, ErrorSeverity.High, { context: 'generateQualityReport Gemini API call' });
+        throw error;
+    }
+};
+
+/**
+ * Generic content generation function used by autonomous services
+ * @param prompt The prompt text
+ * @param config Configuration options (temperature, response_mime_type, etc.)
+ * @returns Generated content as string
+ */
+export const generateContent = async (
+    prompt: string,
+    config?: {
+        temperature?: number;
+        response_mime_type?: string;
+        model?: string;
+    }
+): Promise<string> => {
+    const model = config?.model || 'gemini-2.5-pro';
+
+    try {
+        const apiCall = async () => {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const requestConfig: {
+                temperature?: number;
+                response_mime_type?: string;
+            } = {};
+
+            if (config?.temperature !== undefined) {
+                requestConfig.temperature = config.temperature;
+            }
+            if (config?.response_mime_type) {
+                requestConfig.response_mime_type = config.response_mime_type;
+            }
+
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: requestConfig,
+            });
+
+            return response.text;
+        };
+
+        return await withRetries(apiCall);
+    } catch (error) {
+        logFrontendError(error, ErrorSeverity.High, { context: 'generateContent Gemini API call' });
         throw error;
     }
 };

@@ -193,8 +193,8 @@ Generate the RAG plan now.`;
 
     const resolvedResults = await Promise.all(promises);
 
-    resolvedResults.forEach(({ query_id, results }) => {
-      results.set(query_id, results);
+    resolvedResults.forEach(({ query_id, results: queryResults }) => {
+      results.set(query_id, queryResults);
     });
 
     return results;

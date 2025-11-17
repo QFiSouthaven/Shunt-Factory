@@ -30,6 +30,8 @@ import DocumentViewerModal from '../common/DocumentViewerModal';
 import { useLmStudio } from '../../hooks/useLmStudio';
 import Loader from '../Loader';
 import { executeTool, ExecutionContext, ToolResult } from '../../services/toolApi';
+import FlowDiagram from './FlowDiagram';
+import { MultiAgentOrchestrator } from '../../services/multiAgentOrchestrator.service';
 
 const EvolveModal = lazy(() => import('./EvolveModal'));
 
@@ -182,6 +184,7 @@ const Shunt: React.FC = () => {
     output: false,
     control: false,
     lifecycle: false,
+    flow: false,
   });
   const [guideStatus, setGuideStatus] = useState<'visible' | 'fading' | 'hidden'>('visible');
   const [mobileActiveView, setMobileActiveView] = useState<'input' | 'controls' | 'output'>('input');
@@ -189,6 +192,12 @@ const Shunt: React.FC = () => {
   const [isChainMode, setIsChainMode] = useState(() => {
     try {
         const saved = localStorage.getItem('shunt_isChainMode');
+        return saved ? JSON.parse(saved) : false;
+    } catch { return false; }
+  });
+  const [isMultiAgentMode, setIsMultiAgentMode] = useState(() => {
+    try {
+        const saved = localStorage.getItem('shunt_isMultiAgentMode');
         return saved ? JSON.parse(saved) : false;
     } catch { return false; }
   });
@@ -229,6 +238,7 @@ const Shunt: React.FC = () => {
   const debouncedScratchpadContent = useDebounce(scratchpadContent, 500);
   const debouncedBulletinDocuments = useDebounce(bulletinDocuments, 500);
   const debouncedIsChainMode = useDebounce(isChainMode, 500);
+  const debouncedIsMultiAgentMode = useDebounce(isMultiAgentMode, 500);
 
   // Persist state to localStorage using debounced values
   useEffect(() => { localStorage.setItem('shunt_inputText', debouncedInputText); }, [debouncedInputText]);
@@ -239,7 +249,8 @@ const Shunt: React.FC = () => {
   useEffect(() => { localStorage.setItem('shunt_scratchpadContent', debouncedScratchpadContent); }, [debouncedScratchpadContent]);
   useEffect(() => { localStorage.setItem('shunt_bulletinDocuments', JSON.stringify(debouncedBulletinDocuments)); }, [debouncedBulletinDocuments]);
   useEffect(() => { localStorage.setItem('shunt_isChainMode', JSON.stringify(debouncedIsChainMode)); }, [debouncedIsChainMode]);
-  
+  useEffect(() => { localStorage.setItem('shunt_isMultiAgentMode', JSON.stringify(debouncedIsMultiAgentMode)); }, [debouncedIsMultiAgentMode]);
+
 
   useEffect(() => {
     if (outputText && !isLoading && window.innerWidth < 1280) {
@@ -422,6 +433,48 @@ const Shunt: React.FC = () => {
     
     const sanitizedText = settings.inputSanitizationEnabled ? sanitizeInput(textToProcess) : textToProcess;
     const bulletinContext = getBulletinContext();
+
+    // MULTI-AGENT WORKFLOW: Use orchestrator if enabled
+    if (isMultiAgentMode) {
+        try {
+            const orchestrator = new MultiAgentOrchestrator(action);
+            const result = await orchestrator.execute(sanitizedText, bulletinContext);
+
+            setOutputText(result.finalOutput);
+            setLastTokenUsage(result.totalTokenUsage);
+            audioService.playSound('receive');
+
+            incrementUsage('shuntRuns');
+
+            telemetryService?.recordEvent({
+                eventType: 'ai_response',
+                interactionType: 'multi_agent_workflow',
+                tab: 'Shunt',
+                userInput: textToProcess.substring(0, 200),
+                aiOutput: result.finalOutput.substring(0, 200),
+                outcome: 'success',
+                tokenUsage: result.totalTokenUsage ?? undefined,
+                modelUsed: 'multi-agent',
+                customData: {
+                    action,
+                    priority,
+                    workflowSteps: result.workflowSteps.length,
+                    agreement: result.agreement,
+                    validationPassed: result.validationPassed
+                }
+            });
+
+            console.log(`[MultiAgent] Workflow completed with ${result.workflowSteps.length} steps`);
+
+        } catch (e: any) {
+            const telemetryContext = { context: 'Shunt.handleShunt.multiAgent', action, priority };
+            handleApiError(e, telemetryContext);
+        } finally {
+            setIsLoading(false);
+            setActiveShunt(null);
+        }
+        return;
+    }
 
     try {
         const { resultText, tokenUsage } = await performShunt(sanitizedText, action as ShuntAction, selectedModel, bulletinContext, priority, settings.promptInjectionGuardEnabled);
@@ -737,7 +790,7 @@ const Shunt: React.FC = () => {
 
       <div className="flex-grow p-2 sm:p-4 md:p-6 overflow-hidden">
         {/* Desktop Layout */}
-        <div className="hidden xl:grid xl:grid-cols-3 gap-6 h-full">
+        <div className="hidden xl:grid xl:grid-cols-3 gap-4 xl:gap-6 h-full">
             <div className="flex flex-col gap-6 overflow-y-auto">
                 <BulletinBoardPanel
                     documents={bulletinDocuments}
@@ -783,6 +836,8 @@ const Shunt: React.FC = () => {
                     onToggleMinimize={() => togglePanel('control')}
                     isChainMode={isChainMode}
                     onChainModeChange={setIsChainMode}
+                    isMultiAgentMode={isMultiAgentMode}
+                    onMultiAgentModeChange={setIsMultiAgentMode}
                 />
             </div>
             <div className="flex flex-col overflow-y-auto">
@@ -851,6 +906,8 @@ const Shunt: React.FC = () => {
                     onToggleMinimize={() => togglePanel('control')}
                     isChainMode={isChainMode}
                     onChainModeChange={setIsChainMode}
+                    isMultiAgentMode={isMultiAgentMode}
+                    onMultiAgentModeChange={setIsMultiAgentMode}
                 />
             )}
             {mobileActiveView === 'output' && (
@@ -871,16 +928,23 @@ const Shunt: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Panel: Prompt Lifecycle */}
-      <div className="flex-shrink-0 p-4 md:px-6 md:pb-2">
+      {/* Bottom Panels: Prompt Lifecycle & Flow Diagram */}
+      <div className="flex-shrink-0 p-4 md:px-6 md:pb-2 space-y-4">
         <PromptLifecyclePanel
             history={history}
             initialPrompt={initialPrompt}
             isMinimized={panelStates.lifecycle}
             onToggleMinimize={() => togglePanel('lifecycle')}
         />
+
+        <div className="h-[min(400px,30vh)]">
+          <FlowDiagram
+            isMinimized={panelStates.flow}
+            onToggleMinimize={() => togglePanel('flow')}
+          />
+        </div>
       </div>
-      
+
       <Scratchpad
         isVisible={isScratchpadVisible}
         onClose={() => setIsScratchpadVisible(false)}
