@@ -790,7 +790,7 @@ const Shunt: React.FC = () => {
 
       <div className="flex-grow p-2 sm:p-4 md:p-6 overflow-hidden">
         {/* Desktop Layout */}
-        <div className="hidden xl:grid xl:grid-cols-3 gap-6 h-full">
+        <div className="hidden xl:grid xl:grid-cols-3 gap-4 xl:gap-6 h-full">
             <div className="flex flex-col gap-6 overflow-y-auto">
                 <BulletinBoardPanel
                     documents={bulletinDocuments}
@@ -937,7 +937,7 @@ const Shunt: React.FC = () => {
             onToggleMinimize={() => togglePanel('lifecycle')}
         />
 
-        <div className="h-[400px]">
+        <div className="h-[min(400px,30vh)]">
           <FlowDiagram
             isMinimized={panelStates.flow}
             onToggleMinimize={() => togglePanel('flow')}
