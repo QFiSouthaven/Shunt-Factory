@@ -49,6 +49,18 @@ const tabs: MissionControlTab[] = [
     { key: 'settings', label: 'Settings', icon: <Cog6ToothIcon className="w-5 h-5" />, component: Settings },
 ];
 
+// Helper function to find a tab (including nested tabs)
+const findTab = (tabs: MissionControlTab[], key: MissionControlTabKey): MissionControlTab | undefined => {
+    for (const tab of tabs) {
+        if (tab.key === key) return tab;
+        if (tab.children) {
+            const found = findTab(tab.children, key);
+            if (found) return found;
+        }
+    }
+    return undefined;
+};
+
 const LoadingFallback = () => (
     <div className="flex h-full w-full items-center justify-center bg-gray-800/30">
         <div className="flex flex-col items-center gap-4">
@@ -89,10 +101,10 @@ const MissionControl: React.FC = () => {
         }, 500); // Match CSS animation duration
     }, [activeTabKey, exitingTabKey, isDesktop]);
 
-    const activeTab = tabs.find(tab => tab.key === activeTabKey);
+    const activeTab = findTab(tabs, activeTabKey);
     const ActiveComponent = activeTab ? activeTab.component : null;
-    
-    const exitingTab = tabs.find(tab => tab.key === exitingTabKey);
+
+    const exitingTab = exitingTabKey ? findTab(tabs, exitingTabKey) : null;
     const ExitingComponent = exitingTab ? exitingTab.component : null;
 
     const mainMarginClass = isDesktop ? (isSidebarExpanded ? 'ml-64' : 'ml-12') : 'ml-0';
