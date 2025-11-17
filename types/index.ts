@@ -71,13 +71,16 @@ export interface HistoryEntry {
     score: number;
 }
 
-export type MissionControlTabKey = 'shunt' | 'weaver' | 'foundry' | 'ui_builder' | 'chat' | 'orchestrator' | 'image_analysis' | 'terminal' | 'oraculum' | 'documentation' | 'settings' | 'anthropic_chat' | 'developers' | 'subscription' | 'serendipity_engine' | 'chronicle' | 'deploy' | 'tool_for_ai' | 'framework';
+export type MissionControlTabKey = 'shunt' | 'weaver' | 'foundry' | 'foundry_humanity_last_tool' | 'ui_builder' | 'chat' | 'orchestrator' | 'image_analysis' | 'terminal' | 'oraculum' | 'documentation' | 'settings' | 'anthropic_chat' | 'developers' | 'subscription' | 'serendipity_engine' | 'chronicle' | 'deploy' | 'tool_for_ai' | 'framework';
 
 export interface MissionControlTab {
     key: MissionControlTabKey;
     label: string;
     icon: ReactNode;
     component: React.FC;
+    requiredTier?: 'Pro' | 'Enterprise';  // If specified, only these tiers can access
+    children?: MissionControlTab[];  // Support for nested/hierarchical tabs
+    parent?: MissionControlTabKey;  // Reference to parent tab for subtabs
 }
 
 export interface Documentation {

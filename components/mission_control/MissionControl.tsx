@@ -19,6 +19,7 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 const Shunt = lazy(() => import('../shunt/Shunt'));
 const Weaver = lazy(() => import('../weaver/Weaver'));
 const Foundry = lazy(() => import('../foundry/Foundry'));
+const HumanityLastTool = lazy(() => import('../foundry/HumanityLastTool'));
 const Chat = lazy(() => import('../chat/Chat'));
 const ImageAnalysis = lazy(() => import('../image_analysis/ImageAnalysis'));
 const Oraculum = lazy(() => import('../oraculum/Oraculum'));
@@ -35,7 +36,22 @@ const Framework = lazy(() => import('../framework/Framework'));
 const tabs: MissionControlTab[] = [
     { key: 'shunt', label: 'Shunt', icon: <SparklesIcon className="w-5 h-5" />, component: Shunt },
     { key: 'weaver', label: 'Weaver', icon: <BrainIcon className="w-5 h-5" />, component: Weaver },
-    { key: 'foundry', label: 'Foundry', icon: <BranchingIcon className="w-5 h-5" />, component: Foundry },
+    {
+        key: 'foundry',
+        label: 'Foundry',
+        icon: <BranchingIcon className="w-5 h-5" />,
+        component: Foundry,
+        children: [
+            {
+                key: 'foundry_humanity_last_tool',
+                label: "Humanity's Last Tool",
+                icon: <StarIcon className="w-4 h-4" />,
+                component: HumanityLastTool,
+                requiredTier: 'Pro',
+                parent: 'foundry'
+            }
+        ]
+    },
     { key: 'framework', label: 'Framework', icon: <CpuChipIcon className="w-5 h-5" />, component: Framework },
     { key: 'deploy', label: 'Deploy', icon: <ServerStackIcon className="w-5 h-5" />, component: Deploy },
     { key: 'chat', label: 'Chat', icon: <ChatBubbleLeftRightIcon className="w-5 h-5" />, component: Chat },
@@ -48,6 +64,18 @@ const tabs: MissionControlTab[] = [
     { key: 'documentation', label: 'Documentation', icon: <DocumentIcon className="w-5 h-5" />, component: Documentation },
     { key: 'settings', label: 'Settings', icon: <Cog6ToothIcon className="w-5 h-5" />, component: Settings },
 ];
+
+// Helper function to find a tab (including nested tabs)
+const findTab = (tabs: MissionControlTab[], key: MissionControlTabKey): MissionControlTab | undefined => {
+    for (const tab of tabs) {
+        if (tab.key === key) return tab;
+        if (tab.children) {
+            const found = findTab(tab.children, key);
+            if (found) return found;
+        }
+    }
+    return undefined;
+};
 
 const LoadingFallback = () => (
     <div className="flex h-full w-full items-center justify-center bg-gray-800/30">
@@ -89,10 +117,10 @@ const MissionControl: React.FC = () => {
         }, 500); // Match CSS animation duration
     }, [activeTabKey, exitingTabKey, isDesktop]);
 
-    const activeTab = tabs.find(tab => tab.key === activeTabKey);
+    const activeTab = findTab(tabs, activeTabKey);
     const ActiveComponent = activeTab ? activeTab.component : null;
-    
-    const exitingTab = tabs.find(tab => tab.key === exitingTabKey);
+
+    const exitingTab = exitingTabKey ? findTab(tabs, exitingTabKey) : null;
     const ExitingComponent = exitingTab ? exitingTab.component : null;
 
     const mainMarginClass = isDesktop ? (isSidebarExpanded ? 'ml-64' : 'ml-12') : 'ml-0';
