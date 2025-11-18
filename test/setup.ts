@@ -4,6 +4,7 @@
  */
 
 import { expect, beforeEach, vi } from 'vitest';
+import '@testing-library/jest-dom';
 
 // Mock import.meta.env for tests
 const mockEnv = {
