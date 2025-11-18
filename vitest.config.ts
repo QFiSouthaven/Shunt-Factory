@@ -8,6 +8,15 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
+    environment: 'happy-dom',
+    setupFiles: ['./test/setup.ts'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/backend/**',
+      '**/multi-agent-containers/**',
+      '**/.{idea,git,cache,output,temp}/**',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -26,4 +35,17 @@ export default defineConfig({
       '@': path.resolve(__dirname, './'),
     }
   }
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        'dist/',
+        'backend/',
+      ],
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      '@config': path.resolve(__dirname, './config'),
+    },
+  },
 });

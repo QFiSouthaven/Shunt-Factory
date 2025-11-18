@@ -43,5 +43,17 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vitest": "^4.0.10"
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/ui": "^4.0.10",
+    "happy-dom": "^20.0.10",
+    "js-yaml": "^4.1.1",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^4.0.10"
+  },
+  "overrides": {
+    "glob": ">=11.1.0"
   }
 }
