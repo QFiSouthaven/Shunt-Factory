@@ -97,6 +97,9 @@ describe('withRetries', () => {
       .fn()
       .mockRejectedValueOnce(new Error('429'))
       .mockRejectedValueOnce(new Error('429'))
+      .mockRejectedValue(new Error('429'));
+
+    const promise = withRetries(apiCall);
       .mockRejectedValueOnce(new Error('429'));
 
     const promise = withRetries(apiCall).catch(err => err);
@@ -110,6 +113,13 @@ describe('withRetries', () => {
     expect(apiCall).toHaveBeenCalledTimes(3);
 
     // Third attempt (no more retries) - should throw the last error
+    await expect(promise).rejects.toThrow('429');
+  });
+
+  it('enforces max retries of 3 attempts', async () => {
+    const apiCall = vi.fn().mockRejectedValue(new Error('429: Rate limited'));
+
+    const promise = withRetries(apiCall);
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
     expect(result.message).toContain('429');
@@ -135,6 +145,7 @@ describe('withRetries', () => {
     expect(apiCall).toHaveBeenCalledTimes(3);
 
     // Should throw after max retries
+    await expect(promise).rejects.toThrow('429: Rate limited');
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
     expect(result.message).toContain('429: Rate limited');
@@ -142,6 +153,12 @@ describe('withRetries', () => {
   });
 
   it('does not retry non-rate-limit errors', async () => {
+    const apiCall = vi.fn().mockRejectedValue(new Error('Network error'));
+
+    const promise = withRetries(apiCall);
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toThrow('Network error');
     const apiCall = vi.fn().mockRejectedValueOnce(new Error('Network error'));
 
     const promise = withRetries(apiCall).catch(err => err);
@@ -154,6 +171,12 @@ describe('withRetries', () => {
   });
 
   it('throws immediately on non-rate-limit error', async () => {
+    const apiCall = vi.fn().mockRejectedValue(new Error('Authentication failed'));
+
+    const promise = withRetries(apiCall);
+    await vi.runAllTimersAsync();
+
+    await expect(promise).rejects.toThrow('Authentication failed');
     const apiCall = vi.fn().mockRejectedValueOnce(new Error('Authentication failed'));
 
     const promise = withRetries(apiCall).catch(err => err);
@@ -315,6 +338,9 @@ describe('Integration: withRetries + handleApiError', () => {
   });
 
   it('provides helpful error messages after retry exhaustion', async () => {
+    const apiCall = vi.fn().mockRejectedValue(new Error('429: Rate limit exceeded'));
+
+    const promise = withRetries(apiCall);
     const apiCall = vi.fn()
       .mockRejectedValueOnce(new Error('429: Rate limit exceeded'))
       .mockRejectedValueOnce(new Error('429: Rate limit exceeded'))
@@ -326,6 +352,13 @@ describe('Integration: withRetries + handleApiError', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(2000);
 
+    try {
+      await promise;
+      expect.fail('Should have thrown an error');
+    } catch (error: any) {
+      const userMessage = handleApiError(error);
+      expect(userMessage).toBe('429: Rate limit exceeded');
+    }
     const error = await promise;
     expect(error).toBeInstanceOf(Error);
     const userMessage = handleApiError(error);
