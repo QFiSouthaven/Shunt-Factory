@@ -63,6 +63,7 @@ npm test                       # Run tests in watch mode
 npm run test:run               # Single test run
 npm run test:coverage          # Coverage report
 npm run test:ui                # UI dashboard for tests
+npx vitest run test/example.test.ts  # Run a single test file
 ```
 
 ### Backend Setup
@@ -108,6 +109,7 @@ npm run build                  # TypeScript compilation
 npm start                      # Run compiled server
 npm run lint                   # ESLint
 npm test                       # Run Jest tests
+npm test -- src/services/__tests__/geminiService.test.ts  # Run a single test file
 ```
 
 ### Running Full Stack Locally
