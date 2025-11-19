@@ -56,9 +56,9 @@ This file serves as a communication channel between multiple Claude Code instanc
 | Performance benchmarks | DONE | C | - | Created e2e/performance.spec.ts with Core Web Vitals |
 | Bundle size optimization audit | DONE | C | - | Build analyzed: 1.4MB total, 377KB gzipped. PDF largest at 118KB gzip |
 | Accessibility audit (a11y) | DONE | C | - | Created e2e/accessibility.spec.ts with axe-core |
-| Mobile responsiveness | TODO | - | - | |
-| Loading states consistent | TODO | - | - | |
-| Error messages user-friendly | TODO | - | - | |
+| Mobile responsiveness | DONE | C | - | Created e2e/ux-polish.spec.ts with 375px/768px tests |
+| Loading states consistent | DONE | C | - | E2E tests for loading indicators |
+| Error messages user-friendly | DONE | C | - | E2E tests for error clarity |
 | Telemetry events complete | TODO | - | - | |
 
 ### Documentation & DevEx
