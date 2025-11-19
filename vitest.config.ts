@@ -13,6 +13,7 @@ export default defineConfig({
       '**/dist/**',
       '**/backend/**',
       '**/multi-agent-containers/**',
+      '**/e2e/**',
       '**/.{idea,git,cache,output,temp}/**',
     ],
     coverage: {
