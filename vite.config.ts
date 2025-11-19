@@ -59,56 +59,62 @@ export default defineConfig(({ mode }) => {
           output: {
             // Manual chunk splitting for better caching
             manualChunks: (id) => {
+              // Normalize path separators for cross-platform compatibility
+              const normalizedId = id.replace(/\\/g, '/');
+
               // React core
-              if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+              if (normalizedId.includes('node_modules/react') || normalizedId.includes('node_modules/react-dom')) {
                 return 'vendor-react';
               }
               // Scheduler (React dependency)
-              if (id.includes('node_modules/scheduler')) {
+              if (normalizedId.includes('node_modules/scheduler')) {
                 return 'vendor-react';
               }
               // ReactFlow
-              if (id.includes('node_modules/reactflow') || id.includes('node_modules/@reactflow')) {
+              if (normalizedId.includes('node_modules/reactflow') || normalizedId.includes('node_modules/@reactflow')) {
                 return 'vendor-reactflow';
               }
               // PDF.js
-              if (id.includes('node_modules/pdfjs-dist')) {
+              if (normalizedId.includes('node_modules/pdfjs-dist')) {
                 return 'vendor-pdf';
               }
               // JSZip
-              if (id.includes('node_modules/jszip')) {
+              if (normalizedId.includes('node_modules/jszip')) {
                 return 'vendor-jszip';
               }
               // AI SDKs (Gemini + Anthropic)
-              if (id.includes('node_modules/@google/genai') ||
-                  id.includes('node_modules/@anthropic-ai')) {
+              if (normalizedId.includes('node_modules/@google/genai') ||
+                  normalizedId.includes('node_modules/@anthropic-ai')) {
                 return 'vendor-ai';
               }
               // Transformers
-              if (id.includes('node_modules/@xenova/transformers')) {
+              if (normalizedId.includes('node_modules/@xenova/transformers')) {
                 return 'vendor-transformers';
               }
               // Markdown and syntax highlighting
-              if (id.includes('node_modules/react-markdown') ||
-                  id.includes('node_modules/react-syntax-highlighter') ||
-                  id.includes('node_modules/refractor') ||
-                  id.includes('node_modules/prism')) {
+              if (normalizedId.includes('node_modules/react-markdown') ||
+                  normalizedId.includes('node_modules/react-syntax-highlighter') ||
+                  normalizedId.includes('node_modules/refractor') ||
+                  normalizedId.includes('node_modules/prism')) {
                 return 'vendor-markdown';
               }
               // Utilities (uuid, diff, zod)
-              if (id.includes('node_modules/uuid') ||
-                  id.includes('node_modules/diff') ||
-                  id.includes('node_modules/zod')) {
+              if (normalizedId.includes('node_modules/uuid') ||
+                  normalizedId.includes('node_modules/diff') ||
+                  normalizedId.includes('node_modules/zod')) {
                 return 'vendor-utils';
               }
               // All other node_modules
-              if (id.includes('node_modules')) {
+              if (normalizedId.includes('node_modules')) {
                 return 'vendor-misc';
               }
             },
             // Optimize chunk file names for caching
             chunkFileNames: (chunkInfo) => {
-              const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk';
+              // Normalize path separators for cross-platform compatibility
+              const facadeModuleId = chunkInfo.facadeModuleId
+                ? chunkInfo.facadeModuleId.replace(/\\/g, '/').split('/').pop()
+                : 'chunk';
               return `assets/js/[name]-[hash].js`;
             },
             entryFileNames: 'assets/js/[name]-[hash].js',

@@ -15,6 +15,7 @@ Frontend:
 - Anthropic Claude SDK (`@anthropic-ai/sdk`)
 - ReactFlow (for visual workflow diagrams)
 - Zod (for schema validation)
+- Express.js backend (API proxy for security)
 - Vitest (testing)
 
 Backend:
@@ -28,9 +29,24 @@ Backend:
 
 ### Frontend Setup
 ```bash
-npm install                    # Install dependencies
+npm install                    # Install frontend dependencies
+cd backend && npm install      # Install backend dependencies
 ```
 
+**Environment Configuration:**
+
+Frontend `.env.local`:
+```
+VITE_BACKEND_URL=http://localhost:8080
+VITE_API_KEY=your_client_api_key_here
+```
+
+Backend `.env`:
+```
+GEMINI_API_KEY=your_gemini_api_key_here
+CLIENT_API_KEY=your_client_api_key_here
+PORT=8080
+NODE_ENV=development
 ### Frontend Development
 ```bash
 npm run dev                    # Start dev server on port 3000
@@ -52,6 +68,36 @@ npx vitest run test/example.test.ts  # Run a single test file
 
 ### Backend Setup
 ```bash
+npm run dev                    # Start frontend dev server (http://localhost:3000)
+cd backend && npm run dev      # Start backend dev server (http://localhost:8080)
+npm run build                  # Build frontend for production
+npm run build:prod             # Build with production environment
+npm run preview                # Preview production build
+npm run clean                  # Remove build artifacts
+npm run type-check             # Run TypeScript type checking
+```
+
+### Testing
+```bash
+# Frontend (Vitest)
+npm test                       # Run tests in watch mode
+npm run test:run               # Run tests once
+npm run test:ui                # Run tests with UI
+npm run test:coverage          # Run tests with coverage
+
+# Backend (Jest)
+cd backend && npm test         # Run all backend tests
+
+# Run specific test file
+npx vitest run path/to/test.ts
+```
+
+### Windows 11 / PowerShell
+```powershell
+.\scripts\build.ps1 -Environment production    # Build for production
+.\scripts\deploy.ps1 -Environment staging      # Deploy to staging
+.\scripts\local-preview.ps1                    # Local preview
+.\backend\scripts\setup-gcp.ps1                # GCP backend setup
 cd backend && npm install      # Install backend dependencies
 ```
 
@@ -80,7 +126,9 @@ npm run dev
 
 ### High-Level Structure
 
-The application follows a **modular, context-driven architecture** with a central navigation hub (MissionControl) that lazy-loads specialized modules on demand.
+The application follows a **modular, context-driven architecture** with:
+- Frontend: React SPA with lazy-loaded modules
+- Backend: Express API proxy (keeps API keys secure)
 
 **Core Application Flow:**
 ```
@@ -99,73 +147,78 @@ App.tsx (Root)
       └─ MiaAssistant (floating AI assistant)
 ```
 
+### Frontend-Backend Communication
+
+**Security Architecture:** All AI API calls route through the backend to keep API keys secure.
+
+```typescript
+// Frontend services use backendApiService.ts
+import { performShuntViaBackend } from '@/services/backendApiService';
+
+// Backend endpoints (backend/src/routes/gemini.routes.ts)
+POST /api/gemini/shunt          # Text transformation
+POST /api/gemini/modular        # Modular prompts
+POST /api/gemini/analyze-image  # Image analysis
+POST /api/gemini/generate       # General content generation
+```
+
 ### Context Architecture
 
-The app heavily relies on React Context API for state management. All contexts are defined in `/context/`:
+All contexts are defined in `/context/`:
 
 - **SettingsContext**: User preferences (theme, colors, animations, audio)
 - **TelemetryContext**: Analytics and usage tracking
 - **MCPContext**: Model Context Protocol for AI tool integration
 - **MailboxContext**: File-based communication between modules
 - **MiaContext**: AI assistant state and conversation history
-- **SubscriptionContext**: User subscription and feature access
+- **SubscriptionContext**: User subscription and feature access (Pro/Free tiers)
 - **UndoRedoContext**: Global undo/redo functionality
 - **ActiveTabContext**: Current active module in MissionControl
 
-**Important:** When adding new features that need global state, consider whether it should be a new context or fit within an existing one. Avoid prop drilling by using the appropriate context.
-
 ### Module System
 
-The application is organized into specialized modules accessed through MissionControl (`/components/mission_control/`):
+Modules accessed through MissionControl (`/components/mission_control/`):
 
-- **Shunt**: Text transformation engine with multiple AI-powered operations (summarize, amplify, format, etc.)
-- **Weaver**: Complex multi-step workflow orchestration
-- **Foundry**: Multi-agent system for code review and design
-- **Framework**: Architecture visualization and simulation
+- **Shunt**: Text transformation engine
+- **Weaver**: Multi-step workflow orchestration
+- **Foundry**: Multi-agent system for code review
+- **Framework**: Architecture visualization
 - **Chat**: Direct AI chat interface
-- **Image Analysis**: Image processing and analysis
+- **Image Analysis**: Image processing
 - **Terminal**: In-browser terminal emulation
 - **Oraculum**: Knowledge base and query system
 - **Chronicle**: Session history and logging
-- **Tool for AI**: Job queue and execution system
+- **Tool for AI**: Job queue and execution
 - **Deploy**: Deployment management
-- **Documentation**: Project documentation management
-- **Settings**: User preferences and configuration
+- **Documentation**: Project documentation
+- **Settings**: User preferences
 
-**Module Loading:** All modules are lazy-loaded via `React.lazy()` to improve initial load time. When adding new modules:
-1. Create the module in `/components/[module_name]/`
+**Adding New Modules:**
+1. Create directory: `/components/[module_name]/`
 2. Add lazy import in `MissionControl.tsx`
-3. Register in the `tabs` array with icon and label
-4. Add the tab key to the `MissionControlTabKey` union type in `/types/index.ts`
+3. Register in the `tabs` array
+4. Add to `MissionControlTabKey` union type in `/types/index.ts`
 
 ### Service Layer
 
-Services (`/services/`) encapsulate all external API calls and complex business logic:
+**Frontend Services (`/services/`):**
 
-- **geminiService.ts**: Google Gemini API integration
-  - `performShunt()`: Execute single Shunt actions
-  - `executeModularPrompt()`: Run complex multi-module prompts
-  - `gradeOutput()`: Quality scoring for outputs
-  - `synthesizeDocuments()`: Multi-document processing
-
+- **backendApiService.ts**: Routes all AI calls through backend
+- **geminiService.ts**: Wraps backend API calls with retry logic
 - **prompts.ts**: Centralized prompt engineering
-  - All AI prompts are defined here for consistency
-  - `getPromptForAction()`: Maps ShuntAction to prompt
-  - `constructModularPrompt()`: Builds complex multi-part prompts
-
 - **toolApi.ts**: Tool execution framework for AI agents
 - **miaService.ts**: Mia AI assistant logic
-- **diagramService.ts**: Mermaid diagram generation and sanitization
-- **telemetry.service.ts** & **telemetry.ts**: Analytics tracking
-- **versionControl.service.ts**: File versioning for the Mailbox system
-- **audioService.ts**: UI sound effects
-- **apiUtils.ts**: Retry logic and error handling for API calls
+- **apiUtils.ts**: Retry logic (`withRetries()`) and error handling
+
+**Backend Services (`/backend/src/services/`):**
+
+- **geminiService.ts**: Direct Gemini API calls
+- **secretManager.ts**: GCP Secret Manager integration
 
 **When modifying services:**
-- Always use `withRetries()` wrapper from `apiUtils.ts` for external API calls
+- Always use `withRetries()` wrapper from `apiUtils.ts`
 - Log errors using `logFrontendError()` from `/utils/errorLogger.ts`
-- Return structured responses with token usage for AI operations
-- API keys are accessed via `process.env.API_KEY` (defined in `vite.config.ts`)
+- Return structured responses with token usage
 
 ### Backend Architecture
 
@@ -210,95 +263,62 @@ The frontend can operate in two modes controlled by `VITE_USE_BACKEND`:
 
 ### Type System
 
-All TypeScript types and interfaces are centralized in `/types/`:
+All types in `/types/`:
 
-- **index.ts**: Core application types (ShuntAction, MissionControlTab, etc.)
+- **index.ts**: Core types (ShuntAction, MissionControlTab, etc.)
 - **schemas.ts**: Zod schemas for runtime validation
 - **telemetry.ts**: Telemetry event types
 - **mcp.ts**: Model Context Protocol types
 - **autonomous.ts**: Autonomous agent types
 
-**Key Types:**
-- `ShuntAction`: Enum of all text transformation operations
-- `PromptModuleKey`: Modular prompt building blocks
-- `MissionControlTabKey`: Union type of all available modules
-- `TokenUsage`: AI model token consumption tracking
-
-**Pattern:** All validated data structures should have both a Zod schema (in `schemas.ts`) and a derived TypeScript type using `z.infer<typeof schema>`.
-
-### Security
-
-Input sanitization is critical when dealing with user input that goes to AI models:
-
-- **security.ts** (`/utils/`): `sanitizeInput()` function removes potentially harmful content
-- **Prompt Injection Guard**: Optional feature that can be enabled per ShuntAction
-- **Error Logging**: All errors are logged with severity levels (Low, Medium, High, Critical)
-
-**When accepting user input:**
-1. Sanitize with `sanitizeInput()` before sending to AI
-2. Consider enabling prompt injection guard for sensitive operations
-3. Never trust data from external sources without validation
+**Pattern:** Validated structures should have both Zod schema and derived TypeScript type using `z.infer<typeof schema>`.
 
 ### Path Aliases
-
-The project uses `@/` as an alias for the root directory (configured in `vite.config.ts` and `tsconfig.json`):
 
 ```typescript
 import { ShuntAction } from '@/types';
 import { performShunt } from '@/services/geminiService';
 ```
 
-Use this alias for all imports to maintain consistency and enable easier refactoring.
-
 ## Key Architectural Patterns
 
 ### 1. Provider Pattern
-All global state is managed through React Context providers, nested in a specific order in `App.tsx`. Settings must be outermost, followed by Telemetry, then feature-specific contexts.
+Global state through nested Context providers in `App.tsx`. Settings outermost, then Telemetry, then feature-specific.
 
 ### 2. Lazy Loading
-All MissionControl modules use `React.lazy()` with `Suspense` boundaries to split code and improve performance. The `LoadingFallback` component provides consistent loading states.
+All MissionControl modules use `React.lazy()` with `Suspense` boundaries.
 
 ### 3. Error Boundaries
-Critical UI sections (MissionControl, MiaAssistant) are wrapped in `ErrorBoundary` components to prevent cascading failures.
+Critical UI sections wrapped in `ErrorBoundary` components.
 
 ### 4. Mailbox Pattern
-Inter-module communication uses a file-based "Mailbox" system (`MailboxContext`). Modules can send files to each other asynchronously, with versioning support.
+Inter-module file communication via `MailboxContext` with versioning support.
 
-### 5. Telemetry
-All user interactions should be tracked via `useTelemetry()` hook:
+### 5. Feature Tiering
+Subscription-based feature access (Pro/Free) managed by `SubscriptionContext` and `SidebarNav` component.
+
+### 6. Telemetry
 ```typescript
 const { trackEvent } = useTelemetry();
 trackEvent('module_name', 'action_name', { metadata });
 ```
 
-### 6. Audio Feedback
-UI interactions can trigger sounds via `audioService`:
+### 7. Audio Feedback
 ```typescript
 import { audioService } from '@/services/audioService';
-audioService.playSound('tab_switch'); // or 'success', 'error', etc.
+audioService.playSound('tab_switch');
 ```
 
 ## Common Development Patterns
 
 ### Adding a New Shunt Action
 
-1. Add the action to `ShuntAction` enum in `/types/index.ts`
-2. Add the prompt logic in `/services/prompts.ts` → `getPromptForAction()`
-3. Update UI in `/components/shunt/ControlPanel.tsx` to include new button
-4. Test with various inputs
-
-### Creating a New Module
-
-1. Create directory: `/components/[module_name]/`
-2. Create main component: `[ModuleName].tsx`
-3. Add lazy import in `MissionControl.tsx`
-4. Add tab definition to `tabs` array
-5. Update `MissionControlTabKey` type in `/types/index.ts`
-6. Import and register icon from `/components/icons.tsx`
+1. Add to `ShuntAction` enum in `/types/index.ts`
+2. Add prompt in `/services/prompts.ts` → `getPromptForAction()`
+3. Update UI in `/components/shunt/ControlPanel.tsx`
 
 ### Working with AI APIs
 
-**Gemini API:**
 ```typescript
 import { performShunt } from '@/services/geminiService';
 const { resultText, tokenUsage } = await performShunt(
@@ -310,8 +330,6 @@ const { resultText, tokenUsage } = await performShunt(
   promptInjectionGuardEnabled
 );
 ```
-
-**Thinking Budget:** Complex actions (MAKE_ACTIONABLE, BUILD_A_SKILL) automatically use extended thinking when `gemini-*-pro` models are used.
 
 ### Error Handling
 
@@ -325,38 +343,78 @@ try {
     context: 'operation_name',
     additionalInfo: 'details'
   });
-  // handle gracefully
 }
+```
+
+## Backend Structure
+
+```
+backend/
+├── src/
+│   ├── server.ts              # Express app entry point
+│   ├── routes/
+│   │   └── gemini.routes.ts   # AI API endpoints
+│   ├── services/
+│   │   ├── geminiService.ts   # Gemini API integration
+│   │   └── secretManager.ts   # GCP secrets
+│   ├── middleware/
+│   │   ├── auth.ts            # API key validation
+│   │   ├── validation.ts      # Request validation
+│   │   └── rateLimiter.ts     # Rate limiting
+│   └── utils/
+│       └── logger.ts          # Logging utility
+├── scripts/
+│   ├── setup-gcp.sh           # Unix GCP setup
+│   └── setup-gcp.ps1          # Windows GCP setup
+└── cloudbuild.yaml            # GCP Cloud Build config
 ```
 
 ## Project-Specific Guidelines
 
+### Security
+- All AI calls route through backend (API keys never exposed in browser)
+- Input sanitization via `sanitizeInput()` in `/utils/security.ts`
+- Optional Prompt Injection Guard per ShuntAction
+- Rate limiting on backend endpoints
+
 ### Prompt Engineering
-All prompts are centralized in `/services/prompts.ts`. When modifying:
-- Follow the XML-based structure for Gemini's "Build" agent compatibility (see `/security.md`)
-- Use structured output schemas where possible
-- Include few-shot examples for complex tasks
-- Test prompts across multiple model versions (Flash vs Pro)
+All prompts in `/services/prompts.ts`:
+- Follow XML-based structure for Gemini compatibility
+- Use structured output schemas
+- Test across Flash and Pro models
 
 ### Component Organization
-Components should be organized by feature/module, not by type:
 ```
 ✅ Good: /components/shunt/InputPanel.tsx
 ❌ Avoid: /components/panels/ShuntInput.tsx
 ```
 
 ### State Management Priority
-1. Local component state (`useState`) for UI-only state
-2. Context for feature-level state (e.g., MiaContext for Mia features)
-3. Avoid global state for temporary or derived data
+1. Local `useState` for UI-only state
+2. Context for feature-level state
+3. Avoid global state for temporary data
 
-### Performance Considerations
-- Use `useCallback` and `useMemo` for expensive operations in frequently re-rendering components
-- Lazy load heavy dependencies (e.g., PDF.js, JSZip) only when needed
-- Monitor token usage and display to user (all AI operations return `TokenUsage`)
+### Performance
+- Use `useCallback`/`useMemo` for expensive operations
+- Lazy load heavy dependencies (PDF.js, JSZip)
+- Monitor and display token usage
 
-## Environment Variables
+## Important Files
 
+- **backup/frontend-direct-api/**: Original frontend code with direct API calls (for reference)
+- **WINDOWS_SETUP.md**: Complete Windows 11 setup guide
+- **security.md**: Prompt engineering and Build agent architecture
+
+## Notes for AI Code Assistants
+
+1. Check if a Context exists before creating component-level state
+2. Use service layer - don't make direct API calls from components
+3. Maintain modular architecture - avoid cross-module dependencies
+4. All AI operations must track and return token usage
+5. Follow established error logging patterns
+6. Respect lazy loading for heavy components
+7. Frontend AI calls must go through `backendApiService.ts`
+8. Use cross-platform npm scripts (cross-env, rimraf)
 ### Frontend (`.env.local` in project root)
 
 **Backend Integration:**
