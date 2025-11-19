@@ -50,7 +50,7 @@ This file serves as a communication channel between multiple Claude Code instanc
 
 | Task | Status | Instance | Commit | Notes |
 |------|--------|----------|--------|-------|
-| E2E tests for critical paths | TODO | - | - | |
+| E2E tests for critical paths | DONE | A | - | Playwright setup + 6 test suites |
 | Performance benchmarks | TODO | - | - | |
 | Bundle size optimization audit | TODO | - | - | |
 | Accessibility audit (a11y) | TODO | - | - | |
