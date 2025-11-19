@@ -99,6 +99,12 @@ NODE_ENV=development
 PORT=8080
 GEMINI_API_KEY=your_gemini_api_key_here
 CLIENT_API_KEY=your_client_api_key_here
+
+# Local LLM (optional, for privacy)
+LM_STUDIO_URL=http://localhost:1234/v1
+LM_STUDIO_MODEL=local-model
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama2
 ```
 
 ## Architecture Overview
@@ -188,6 +194,7 @@ Modules accessed through MissionControl (`/components/mission_control/`):
 - **toolApi.ts**: Tool execution framework for AI agents
 - **miaService.ts**: Mia AI assistant logic
 - **apiUtils.ts**: Retry logic (`withRetries()`) and error handling
+- **localLLMService.ts**: Local LLM integration (LM Studio, Ollama)
 
 **Backend Services (`/backend/src/services/`):**
 
@@ -230,6 +237,13 @@ backend/
 - `POST /api/gemini/modular-prompt` - Modular prompt execution
 - `POST /api/gemini/analyze-image` - Image analysis
 - `POST /api/gemini/generate` - Generic text generation
+
+**Local LLM Endpoints (Privacy-focused):**
+- `GET /api/local-llm/health` - Check LM Studio/Ollama availability
+- `GET /api/local-llm/models` - List available local models
+- `POST /api/local-llm/generate` - Generate text with local LLM
+- `POST /api/local-llm/shunt` - Shunt action with local LLM
+- `POST /api/local-llm/chat` - Multi-turn chat with local LLM
 
 **Security Features:**
 - API key authentication via `x-api-key` header
