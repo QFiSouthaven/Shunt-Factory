@@ -6,8 +6,6 @@ export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./test/setup.ts'],
     environment: 'happy-dom',
     setupFiles: ['./test/setup.ts'],
     exclude: [
@@ -26,20 +24,9 @@ export default defineConfig({
         '**/*.d.ts',
         '**/*.config.*',
         '**/mockData',
-        'dist/'
-      ]
-    }
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './'),
-    }
-  }
-        '**/*.test.ts',
-        '**/*.spec.ts',
         'dist/',
         'backend/',
-      ],
+      ]
     },
   },
   resolve: {
