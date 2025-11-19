@@ -21,12 +21,12 @@ export function validateRequest<T>(schema: z.ZodSchema<T>, source: 'body' | 'que
       if (error instanceof z.ZodError) {
         logger.warn('Validation error', {
           endpoint: req.path,
-          errors: error.errors,
+          errors: error.issues,
         });
         res.status(400).json({
           error: 'Validation Error',
           message: 'Invalid request data',
-          details: error.errors.map((e) => ({
+          details: error.issues.map((e: z.ZodIssue) => ({
             path: e.path.join('.'),
             message: e.message,
           })),

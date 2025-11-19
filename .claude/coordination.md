@@ -53,9 +53,9 @@ This file serves as a communication channel between multiple Claude Code instanc
 | Task | Status | Instance | Commit | Notes |
 |------|--------|----------|--------|-------|
 | E2E tests for critical paths | DONE | A | - | Playwright setup + 6 test suites |
-| Performance benchmarks | TODO | - | - | |
+| Performance benchmarks | DONE | C | - | Created e2e/performance.spec.ts with Core Web Vitals |
 | Bundle size optimization audit | DONE | C | - | Build analyzed: 1.4MB total, 377KB gzipped. PDF largest at 118KB gzip |
-| Accessibility audit (a11y) | TODO | - | - | |
+| Accessibility audit (a11y) | DONE | C | - | Created e2e/accessibility.spec.ts with axe-core |
 | Mobile responsiveness | TODO | - | - | |
 | Loading states consistent | TODO | - | - | |
 | Error messages user-friendly | TODO | - | - | |
