@@ -7,34 +7,72 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Shunt Final V** is a professional-grade, memory-efficient frontend interface for advanced AI-driven text transformation, system orchestration, and agentic development. The application integrates with Google's Gemini API and Anthropic's Claude API to provide a comprehensive suite of AI-powered tools.
 
 **Tech Stack:**
+
+Frontend:
 - React 19 with TypeScript
 - Vite (build tool)
 - Google Generative AI SDK (`@google/genai`)
 - Anthropic Claude SDK (`@anthropic-ai/sdk`)
 - ReactFlow (for visual workflow diagrams)
 - Zod (for schema validation)
+- Vitest (testing)
+
+Backend:
+- Express.js with TypeScript
+- Google Cloud Secret Manager
+- Winston logging with Cloud Logging
+- Jest (testing)
+- Docker for deployment
 
 ## Development Commands
 
-### Setup
+### Frontend Setup
 ```bash
 npm install                    # Install dependencies
 ```
 
-**Environment Configuration:**
-Create a `.env.local` file in the project root with:
-```
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-### Development
+### Frontend Development
 ```bash
-npm run dev                    # Start dev server on port 3000 (http://localhost:3000)
+npm run dev                    # Start dev server on port 3000
 npm run build                  # Build for production (outputs to /dist)
+npm run build:staging          # Build for staging environment
 npm run preview                # Preview production build
+npm run type-check             # TypeScript validation only
+npm run analyze                # Bundle size analysis
 ```
 
-**Note:** There is currently no test framework configured. When adding tests, they should be placed alongside their source files with `.test.ts` or `.test.tsx` extensions.
+### Frontend Testing
+```bash
+npm test                       # Run tests in watch mode
+npm run test:run               # Single test run
+npm run test:coverage          # Coverage report
+npm run test:ui                # UI dashboard for tests
+```
+
+### Backend Setup
+```bash
+cd backend && npm install      # Install backend dependencies
+```
+
+### Backend Development
+```bash
+cd backend
+npm run dev                    # Dev server with hot reload (port 8080)
+npm run build                  # TypeScript compilation
+npm start                      # Run compiled server
+npm run lint                   # ESLint
+npm test                       # Run Jest tests
+```
+
+### Running Full Stack Locally
+```bash
+# Terminal 1 - Backend
+cd backend && npm run dev
+
+# Terminal 2 - Frontend (with backend integration)
+# Set VITE_USE_BACKEND=true in .env.local
+npm run dev
+```
 
 ## Architecture Overview
 
@@ -126,6 +164,47 @@ Services (`/services/`) encapsulate all external API calls and complex business 
 - Log errors using `logFrontendError()` from `/utils/errorLogger.ts`
 - Return structured responses with token usage for AI operations
 - API keys are accessed via `process.env.API_KEY` (defined in `vite.config.ts`)
+
+### Backend Architecture
+
+The backend (`/backend/`) is a production-ready Express.js server that securely handles AI API calls:
+
+```
+backend/
+├── src/
+│   ├── config/environment.ts      # Configuration validation
+│   ├── middleware/
+│   │   ├── auth.ts                # API key authentication (x-api-key header)
+│   │   ├── rateLimiter.ts         # Per-user rate limiting
+│   │   └── validation.ts          # Zod validation + prompt injection detection
+│   ├── routes/gemini.routes.ts    # API endpoints
+│   ├── services/
+│   │   ├── geminiService.ts       # Server-side Gemini client
+│   │   └── secretManager.ts       # Google Cloud Secret Manager
+│   ├── utils/logger.ts            # Winston + Cloud Logging
+│   └── server.ts                  # Express server entry
+├── Dockerfile                     # Multi-stage production build
+└── cloudbuild.yaml                # Cloud Build CI/CD
+```
+
+**API Endpoints:**
+- `GET /health`, `/ready` - Health checks
+- `POST /api/gemini/shunt` - Shunt action execution
+- `POST /api/gemini/modular-prompt` - Modular prompt execution
+- `POST /api/gemini/analyze-image` - Image analysis
+- `POST /api/gemini/generate` - Generic text generation
+
+**Security Features:**
+- API key authentication via `x-api-key` header
+- Two-tier rate limiting (100 req/min standard, 20 req/min for AI)
+- Input validation with Zod schemas
+- Prompt injection detection
+- Helmet.js security headers
+
+**Backend/Frontend Integration:**
+The frontend can operate in two modes controlled by `VITE_USE_BACKEND`:
+- `false`: Frontend calls Gemini API directly (development)
+- `true`: Frontend routes calls through backend API (production)
 
 ### Type System
 
@@ -276,24 +355,143 @@ Components should be organized by feature/module, not by type:
 
 ## Environment Variables
 
-The app expects environment variables in `.env.local`:
+### Frontend (`.env.local` in project root)
 
-- `GEMINI_API_KEY`: Required for all Gemini API operations
-- Future: May add `ANTHROPIC_API_KEY` when Claude integration is fully active
-
-Environment variables are exposed to the client via `vite.config.ts`:
-```typescript
-define: {
-  'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-  'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-}
+**Backend Integration:**
+```bash
+VITE_BACKEND_URL=http://localhost:8080
+VITE_API_KEY=dev-test-key
+VITE_USE_BACKEND=false           # true for backend mode, false for direct API calls
+VITE_USE_MULTI_AGENT=true
 ```
+
+**API Keys (frontend-only mode):**
+```bash
+GEMINI_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here  # Optional
+```
+
+**Environment & Feature Flags:**
+```bash
+VITE_APP_ENV=development         # development|staging|production
+VITE_ENABLE_TELEMETRY=true
+VITE_ENABLE_DEBUG_TOOLS=true
+VITE_LOG_LEVEL=info
+```
+
+**Rate Limiting (frontend):**
+```bash
+VITE_RATE_LIMIT_SHUNT=50
+VITE_RATE_LIMIT_WEAVER=10
+VITE_RATE_LIMIT_FOUNDRY=20
+```
+
+### Backend (`.env.local` in `/backend/`)
+
+```bash
+NODE_ENV=development
+PORT=8080
+CORS_ORIGIN=http://localhost:3000
+
+# GCP Integration
+GCP_PROJECT_ID=your-project-id
+GEMINI_API_KEY_SECRET_NAME=gemini-api-key
+GEMINI_API_KEY=dev-key-only      # Only for local dev
+
+# Authentication
+CLIENT_API_KEYS=key1,key2,key3   # Comma-separated valid API keys
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Logging
+ENABLE_CLOUD_LOGGING=false
+LOG_LEVEL=debug
+```
+
+Environment variables are exposed to the frontend client via `vite.config.ts` `define` block.
+
+## Testing
+
+### Frontend (Vitest)
+
+Configuration: `vitest.config.ts`
+- Environment: happy-dom
+- Setup file: `./test/setup.ts`
+- Coverage provider: v8
+
+Test files go in `/test/` directory. Use `.test.ts` or `.test.tsx` extensions.
+
+### Backend (Jest)
+
+Configuration: `backend/jest.config.js`
+- Preset: ts-jest
+- Environment: node
+
+Test files go alongside source in `__tests__/` directories:
+- `src/middleware/__tests__/` - auth, rateLimiter, validation tests
+- `src/services/__tests__/` - geminiService, secretManager tests
+- `src/routes/__tests__/` - gemini.routes tests
+
+## CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+
+**CI Pipeline (`ci.yml`):**
+- Runs on push/PR to main/develop
+- Lint & type check
+- Matrix builds (development, staging, production)
+- Security scan (npm audit)
+- Bundle size analysis (PR only)
+
+**Deploy to Staging (`deploy-staging.yml`):**
+- Triggers on push to `develop` branch
+- Pre-deployment verification
+- Staging environment build
+
+**Deploy to Production (`deploy-production.yml`):**
+- Triggers on push to `main` or version tags
+- Pre-deployment checks
+- Production build verification (console.log removal, bundle sizes)
+- Post-deployment health checks
+- GitHub release creation for tags
+
+## Deployment
+
+### Docker (Backend)
+
+```bash
+cd backend
+docker build -t shunt-backend .
+docker run -p 8080:8080 --env-file .env.local shunt-backend
+```
+
+### Google Cloud Run
+
+Backend is configured for Cloud Run deployment:
+- Uses `cloudbuild.yaml` for CI/CD
+- Secrets managed via Google Cloud Secret Manager
+- Auto-scales to zero
+- Run `backend/scripts/setup-gcp.sh` for initial GCP setup
+
+### Build Optimization
+
+Frontend uses advanced Vite chunk splitting (9 manual chunks):
+- Core: react, reactflow
+- Heavy: pdf, jszip, transformers
+- AI: google-genai, anthropic
+- Utils: markdown, misc
+
+Sourcemaps are only generated for staging builds.
 
 ## Additional Resources
 
 - **security.md**: Deep dive into Google AI Studio Build agent architecture and prompt engineering best practices
+- **backend/README.md**: Comprehensive backend API documentation
+- **backend/QUICK_START.md**: 5-minute backend quick start guide
+- **DEPLOYMENT_GUIDE.md**: Complete deployment guide for backend and frontend
 - **Session Workflow.drawio.svg**: Visual diagram of the session workflow (can be opened in draw.io)
-- **AI Studio App**: https://ai.studio/apps/drive/1K-CWFE6D4bkUBMpv4yLR3WF6_nJIpTCl
 
 ## Notes for AI Code Assistants
 
@@ -305,3 +503,6 @@ When working on this codebase:
 5. Follow the established error logging patterns
 6. Respect the lazy loading strategy for new heavy components
 7. When adding new AI features, consider whether they fit in existing modules or need a new one
+8. Backend endpoints must include authentication middleware and rate limiting
+9. Run tests before committing: `npm run test:run` (frontend) and `cd backend && npm test` (backend)
+10. Check `VITE_USE_BACKEND` setting when debugging AI API issues
