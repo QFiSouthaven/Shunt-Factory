@@ -1,38 +1,39 @@
 // services/miaService.ts
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+/**
+ * Mia Service - Backend API Version
+ * All AI calls go through the secure backend
+ */
+
 import { GeminiResponse, TokenUsage, ImplementationTask } from '../types';
 import { logFrontendError, ErrorSeverity } from "../utils/errorLogger";
 import { withRetries } from './apiUtils';
-// TRUST ARCHITECTURE: LLM-judge self-correction loop
 import { executeCode } from './codeExecutor';
-
-const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenUsage => {
-    return {
-        prompt_tokens: response.usageMetadata?.promptTokenCount ?? 0,
-        completion_tokens: response.usageMetadata?.candidatesTokenCount ?? 0,
-        total_tokens: response.usageMetadata?.totalTokenCount ?? 0,
-        model: model,
-    };
-};
+import { generateContentViaBackend } from './backendApiService';
 
 export const getMiaChatResponse = async (history: { role: string, parts: { text: string }[] }[], newMessage: string): Promise<string> => {
+    // Note: Chat with history requires backend chat endpoint
+    // For now, we'll use a simple prompt-based approach
+    const conversationContext = history.map(h =>
+        `${h.role === 'user' ? 'User' : 'Mia'}: ${h.parts.map(p => p.text).join(' ')}`
+    ).join('\n');
+
+    const prompt = `You are Mia, a friendly and highly intelligent AI assistant embedded in a complex web application for developers. Be helpful and concise. Your primary role is to assist the user with understanding and operating the application.
+
+Previous conversation:
+${conversationContext}
+
+User: ${newMessage}
+
+Mia:`;
+
     try {
         const apiCall = async () => {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const chat = ai.chats.create({
-                model: 'gemini-2.5-pro',
-                config: {
-                    systemInstruction: "You are Mia, a friendly and highly intelligent AI assistant embedded in a complex web application for developers. Be helpful and concise. Your primary role is to assist the user with understanding and operating the application.",
-                    thinkingConfig: { thinkingBudget: 32768 },
-                },
-                history,
-            });
-            const response = await chat.sendMessage({ message: newMessage });
-            return response.text;
+            const result = await generateContentViaBackend(prompt, 'gemini-2.5-pro');
+            return result.resultText;
         };
         return await withRetries(apiCall);
     } catch (error) {
-        logFrontendError(error, ErrorSeverity.High, { context: 'getMiaChatResponse Gemini API call' });
+        logFrontendError(error, ErrorSeverity.High, { context: 'getMiaChatResponse Backend API call' });
         throw error;
     }
 };
@@ -50,19 +51,12 @@ ${JSON.stringify(errorLog, null, 2)}
 ---`;
     try {
         const apiCall = async () => {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-pro',
-                contents: prompt,
-                config: {
-                    thinkingConfig: { thinkingBudget: 32768 },
-                },
-            });
-            return response.text;
+            const result = await generateContentViaBackend(prompt, 'gemini-2.5-pro');
+            return result.resultText;
         };
         return await withRetries(apiCall);
     } catch (error) {
-        logFrontendError(error, ErrorSeverity.Critical, { context: 'getMiaErrorAnalysis Gemini API call' });
+        logFrontendError(error, ErrorSeverity.Critical, { context: 'getMiaErrorAnalysis Backend API call' });
         throw error;
     }
 };
@@ -95,259 +89,92 @@ Given the following error report and project context, you must perform a collabo
     *   Ensure file paths are correct and the generated code is syntactically perfect.
 
 3.  **Output:**
-    *   Return your response strictly according to the provided JSON schema.
+    *   Return your response strictly according to the JSON schema.
     *   You are not required to provide clarifying questions, an architectural proposal, or test cases. Return empty arrays or empty strings for those fields.
 
 ---
 **Error Report:**
-\`\`\`json
 ${JSON.stringify(errorLog, null, 2)}
-\`\`\`
+
 ---
-**Project Context:**
-\`\`\`markdown
+**Project Context (Codebase):**
 ${projectContext}
-\`\`\`
 ---
 `;
-    const implementationTaskSchema = {
-        type: Type.OBJECT,
-        properties: {
-            filePath: { type: Type.STRING, description: "The full path to the file that needs to be modified." },
-            description: { type: Type.STRING, description: "A one-sentence description of the change." },
-            details: { type: Type.STRING, description: "Precise, step-by-step details for a coding AI to follow. Use for descriptive plans." },
-            newContent: { type: Type.STRING, description: "The full, complete new content for the file. Use for direct code fixes." },
-        },
-        required: ['filePath', 'description']
-    };
-
-    const responseSchema = {
-    type: Type.OBJECT,
-    properties: {
-        clarifyingQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-        architecturalProposal: { type: Type.STRING },
-        implementationTasks: {
-            type: Type.ARRAY,
-            items: {
-                ...implementationTaskSchema,
-                required: ['filePath', 'description', 'newContent'], // newContent is now required for this operation
-            },
-            description: "A list of files to modify with their full new content."
-        },
-        testCases: { type: Type.ARRAY, items: { type: Type.STRING } },
-        internalMonologue: { 
-            type: Type.STRING, 
-            description: "The simulated internal monologue of the agent swarm as they collaborate to find a solution." 
-        }
-    },
-    required: ['implementationTasks']
-  };
 
   try {
     const apiCall = async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const model = 'gemini-2.5-pro';
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema,
-                thinkingConfig: { thinkingBudget: 32768 },
-            },
+        const result = await generateContentViaBackend(prompt, 'gemini-2.5-pro', {
+            responseMimeType: "application/json",
         });
 
-        const tokenUsage = mapTokenUsage(response, model);
-        const jsonText = response.text;
-        const parsedResponse = JSON.parse(jsonText);
+        const parsedResponse = JSON.parse(result.resultText);
 
         return {
-            clarifyingQuestions: [],
-            architecturalProposal: '',
-            testCases: [],
-            ...parsedResponse,
-            tokenUsage,
+            clarifyingQuestions: parsedResponse.clarifyingQuestions || [],
+            architecturalProposal: parsedResponse.architecturalProposal || '',
+            implementationTasks: parsedResponse.implementationTasks || [],
+            testCases: parsedResponse.testCases || [],
+            dataSchema: parsedResponse.dataSchema || '',
+            tokenUsage: result.tokenUsage,
         };
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateCodeFixPlan Gemini API call' });
+    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateCodeFixPlan Backend API call' });
     throw error;
   }
 };
 
-/**
- * TRUST ARCHITECTURE: LLM-Judge Self-Correction Loop
- *
- * Inspired by Google CodeMender's approach. This function validates a proposed
- * code fix before showing it to the user, ensuring "merge-ready" quality.
- *
- * Strategic Importance:
- * - Transforms Mia from "suggestion tool" to "trust tool"
- * - Provides "validated fix plans" instead of unverified suggestions
- * - Competes directly with Google CodeMender's self-correction capability
- * - Addresses the "verification bottleneck" that causes 40% of agentic AI failures
- *
- * Process:
- * 1. Diagnosis: Generate initial code fix plan
- * 2. Internal Execution: Execute proposed fix in sandbox (not shown to user)
- * 3. Self-Correction: LLM-judge validates fix for functional equivalence & regressions
- * 4. Validated Response: Only show fix to user if it passes validation
- *
- * @param errorLog - The error report to fix
- * @param projectContext - Full project context for diagnosis
- * @param originalCode - The original code before the fix (for regression check)
- * @returns Validated code fix plan with validation status
- */
-export const generateValidatedCodeFixPlan = async (
-  errorLog: Record<string, any>,
-  projectContext: string,
-  originalCode: string
-): Promise<GeminiResponse & { isValidated: boolean; validationReport?: string }> => {
-  try {
-    // Step 1: Diagnosis - Generate initial code fix plan
-    const initialFixPlan = await generateCodeFixPlan(errorLog, projectContext);
+// TRUST ARCHITECTURE: LLM-judge self-correction loop
+export const executeAndSelfCorrect = async (
+    task: ImplementationTask,
+    projectContext: string,
+    maxAttempts: number = 3
+): Promise<{ success: boolean; result: string; attempts: number }> => {
+    let attempts = 0;
+    let lastResult = '';
+    let currentCode = task.newContent || '';
 
-    // If no implementation tasks, return early
-    if (!initialFixPlan.implementationTasks || initialFixPlan.implementationTasks.length === 0) {
-      return {
-        ...initialFixPlan,
-        isValidated: false,
-        validationReport: 'No implementation tasks generated.',
-      };
-    }
+    while (attempts < maxAttempts) {
+        attempts++;
 
-    // Step 2: Internal Execution - Execute proposed fix in sandbox
-    // For now, we'll skip actual execution and move to LLM-judge validation
-    // TODO: Integrate with codeExecutor.ts when sandbox is fully implemented
+        // Execute the code
+        const executionResult = await executeCode(currentCode);
+        lastResult = executionResult.output;
 
-    // Step 3: Self-Correction - LLM-judge validation
-    const validationResult = await llmJudgeValidation(
-      originalCode,
-      initialFixPlan.implementationTasks,
-      errorLog
-    );
+        if (executionResult.success) {
+            return { success: true, result: lastResult, attempts };
+        }
 
-    // Step 4: Validated Response - Return with validation status
-    if (validationResult.isValid) {
-      return {
-        ...initialFixPlan,
-        isValidated: true,
-        validationReport: validationResult.report,
-      };
-    } else {
-      // Validation failed - return with warning
-      return {
-        ...initialFixPlan,
-        isValidated: false,
-        validationReport: validationResult.report,
-      };
-    }
-  } catch (error) {
-    logFrontendError(error, ErrorSeverity.Critical, {
-      context: 'generateValidatedCodeFixPlan (LLM-judge self-correction loop)',
-    });
-    throw error;
-  }
-};
+        // If execution failed, use LLM to self-correct
+        const correctionPrompt = `
+You are an expert code debugger. The following code failed to execute with an error.
 
-/**
- * LLM-Judge: Validates a proposed code fix for functional equivalence and regressions
- *
- * Acts as a separate, specialized AI call to critique the proposed fix.
- * Inspired by Google CodeMender's "LLM judge tool".
- *
- * @param originalCode - The original code before the fix
- * @param proposedFix - The proposed implementation tasks
- * @param errorContext - The original error context
- * @returns Validation result with pass/fail and detailed report
- */
-async function llmJudgeValidation(
-  originalCode: string,
-  proposedFix: ImplementationTask[],
-  errorContext: Record<string, any>
-): Promise<{ isValid: boolean; report: string }> {
-  const prompt = `
-You are an **LLM Judge** - a specialized AI trained to validate code fixes for correctness and safety. Your role is to critique a proposed code fix before it is shown to a developer.
-
-**Your Validation Criteria:**
-1. **Functional Equivalence**: Does the fix preserve the original functionality while resolving the error?
-2. **No Regressions**: Does the fix introduce new bugs or break existing features?
-3. **Code Quality**: Is the fix well-structured, readable, and maintainable?
-4. **Security**: Does the fix introduce any security vulnerabilities?
-
-**Original Error Context:**
-\`\`\`json
-${JSON.stringify(errorContext, null, 2)}
+**Original Code:**
+\`\`\`
+${currentCode}
 \`\`\`
 
-**Original Code (Before Fix):**
+**Error Output:**
 \`\`\`
-${originalCode}
-\`\`\`
-
-**Proposed Fix:**
-${proposedFix.map((task, i) => `
-**Task ${i + 1}: ${task.filePath}**
-Description: ${task.description}
-${task.newContent ? `\n\`\`\`\n${task.newContent}\n\`\`\`` : `Details: ${task.details}`}
-`).join('\n')}
-
-**Your Task:**
-Analyze the proposed fix and provide a validation report in the following JSON format:
-\`\`\`json
-{
-  "isValid": true | false,
-  "report": "Detailed explanation of your validation findings. If valid, explain why. If invalid, explain what regressions or issues you found."
-}
+${lastResult}
 \`\`\`
 
-Be rigorous. If you find ANY potential regression or security issue, mark isValid as false.
+**Task Description:**
+${task.description}
+
+Please provide the corrected, complete code that fixes this error. Return ONLY the corrected code, nothing else.
 `;
 
-  try {
-    const apiCall = async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const model = 'gemini-2.5-pro'; // Use Pro for rigorous validation
+        try {
+            const result = await generateContentViaBackend(correctionPrompt, 'gemini-2.5-pro');
+            currentCode = result.resultText.replace(/^```[\w]*\n?/, '').replace(/```$/, '').trim();
+        } catch (error) {
+            logFrontendError(error, ErrorSeverity.High, { context: 'executeAndSelfCorrect correction attempt' });
+            break;
+        }
+    }
 
-      const responseSchema = {
-        type: Type.OBJECT,
-        properties: {
-          isValid: { type: Type.BOOLEAN, description: 'Whether the proposed fix is valid and safe' },
-          report: { type: Type.STRING, description: 'Detailed validation findings' },
-        },
-        required: ['isValid', 'report'],
-      };
-
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema,
-          thinkingConfig: { thinkingBudget: 32768 }, // Extended thinking for rigorous validation
-        },
-      });
-
-      const jsonText = response.text;
-      const parsedResponse = JSON.parse(jsonText);
-
-      return {
-        isValid: parsedResponse.isValid ?? false,
-        report: parsedResponse.report || 'No validation report generated.',
-      };
-    };
-
-    return await withRetries(apiCall);
-  } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, {
-      context: 'llmJudgeValidation',
-    });
-
-    // If validation fails, assume fix is NOT valid (fail-safe)
-    return {
-      isValid: false,
-      report: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    };
-  }
-}
+    return { success: false, result: lastResult, attempts };
+};
