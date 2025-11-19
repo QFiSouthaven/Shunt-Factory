@@ -10,6 +10,7 @@ import { env } from './config/environment.js';
 import { logger } from './utils/logger.js';
 import { standardRateLimiter } from './middleware/rateLimiter.js';
 import geminiRoutes from './routes/gemini.routes.js';
+import localLLMRoutes from './routes/localLLM.routes.js';
 
 const app = express();
 
@@ -107,6 +108,7 @@ app.get('/ready', async (req: Request, res: Response) => {
 
 // API routes (with rate limiting)
 app.use('/api/gemini', geminiRoutes);
+app.use('/api/local-llm', localLLMRoutes);
 
 // Catch-all 404
 app.use((req: Request, res: Response) => {
