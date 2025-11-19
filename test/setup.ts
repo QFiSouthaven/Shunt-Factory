@@ -1,4 +1,9 @@
-import { expect, afterEach } from 'vitest';
+/**
+ * Vitest Setup File
+ * Global test configuration and utilities
+ */
+
+import { expect, afterEach, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 
@@ -23,13 +28,7 @@ beforeAll(() => {
 
 afterAll(() => {
   console.error = originalError;
-/**
- * Vitest Setup File
- * Global test configuration and utilities
- */
-
-import { expect, beforeEach, vi } from 'vitest';
-import '@testing-library/jest-dom';
+});
 
 // Mock import.meta.env for tests
 const mockEnv = {
