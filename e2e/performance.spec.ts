@@ -1,5 +1,21 @@
 import { test, expect } from '@playwright/test';
 
+interface PerformanceMetrics {
+  ttfb?: number;
+  fcp?: number;
+  lcp?: number;
+  domInteractive?: number;
+  domContentLoaded?: number;
+  loadComplete?: number;
+  firstPaint?: number;
+  dns?: number;
+  tcp?: number;
+  download?: number;
+  domParsing?: number;
+  resourceCount?: number;
+  totalResourceSize?: number;
+}
+
 test.describe('Performance Benchmarks', () => {
   test('should load page within acceptable time', async ({ page }) => {
     const startTime = Date.now();
@@ -20,7 +36,7 @@ test.describe('Performance Benchmarks', () => {
     await page.goto('/');
 
     // Collect performance metrics
-    const metrics = await page.evaluate(() => {
+    const metrics: PerformanceMetrics = await page.evaluate(() => {
       return new Promise((resolve) => {
         const perfData: any = {};
 
@@ -238,7 +254,7 @@ test.describe('Performance Summary Report', () => {
     const totalLoadTime = Date.now() - startTime;
 
     // Collect all metrics
-    const metrics = await page.evaluate(() => {
+    const metrics: PerformanceMetrics = await page.evaluate(() => {
       const data: any = {};
 
       // Navigation timing
