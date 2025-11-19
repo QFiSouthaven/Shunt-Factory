@@ -101,7 +101,7 @@ class GeminiService {
       });
 
       return {
-        text: response.text,
+        text: response.text ?? '',
         tokenUsage,
       };
     } catch (error) {
@@ -148,7 +148,7 @@ class GeminiService {
       });
 
       return {
-        text: response.text,
+        text: response.text ?? '',
         tokenUsage,
       };
     } catch (error) {
