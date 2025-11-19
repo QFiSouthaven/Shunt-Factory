@@ -1,31 +1,38 @@
 // features/mia/MiaService.ts
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+/**
+ * Mia Service - Backend API Version
+ * All AI calls go through the secure backend (API key not exposed in browser)
+ */
+
 import { GeminiResponse, TokenUsage } from '../../types';
 import { logFrontendError, ErrorSeverity } from "../../utils/errorLogger";
-
-const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenUsage => {
-    return {
-        prompt_tokens: response.usageMetadata?.promptTokenCount ?? 0,
-        completion_tokens: response.usageMetadata?.candidatesTokenCount ?? 0,
-        total_tokens: response.usageMetadata?.totalTokenCount ?? 0,
-        model: model,
-    };
-};
+import { generateContentViaBackend } from '../../services/backendApiService';
+import { withRetries } from '../../services/apiUtils';
 
 export const getMiaChatResponse = async (history: { role: string, parts: { text: string }[] }[], newMessage: string): Promise<string> => {
+    // Note: Chat with history requires backend chat endpoint
+    // For now, we'll use a simple prompt-based approach
+    const conversationContext = history.map(h =>
+        `${h.role === 'user' ? 'User' : 'Mia'}: ${h.parts.map(p => p.text).join(' ')}`
+    ).join('\n');
+
+    const prompt = `You are Mia, a friendly and highly intelligent AI assistant embedded in a complex web application for developers. Be helpful and concise. Your primary role is to assist the user with understanding and operating the application.
+
+Previous conversation:
+${conversationContext}
+
+User: ${newMessage}
+
+Mia:`;
+
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const chat = ai.chats.create({
-            model: 'gemini-2.5-flash',
-            config: {
-                systemInstruction: "You are Mia, a friendly and highly intelligent AI assistant embedded in a complex web application for developers. Be helpful and concise. Your primary role is to assist the user with understanding and operating the application.",
-            },
-            history,
-        });
-        const response = await chat.sendMessage({ message: newMessage });
-        return response.text;
+        const apiCall = async () => {
+            const result = await generateContentViaBackend(prompt, 'gemini-2.5-flash');
+            return result.resultText;
+        };
+        return await withRetries(apiCall);
     } catch (error) {
-        logFrontendError(error, ErrorSeverity.High, { context: 'getMiaChatResponse Gemini API call' });
+        logFrontendError(error, ErrorSeverity.High, { context: 'getMiaChatResponse Backend API call' });
         throw new Error('Failed to get a chat response from Mia.');
     }
 };
@@ -42,14 +49,13 @@ Here is the error report:
 ${JSON.stringify(errorLog, null, 2)}
 ---`;
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-        return response.text;
+        const apiCall = async () => {
+            const result = await generateContentViaBackend(prompt, 'gemini-2.5-flash');
+            return result.resultText;
+        };
+        return await withRetries(apiCall);
     } catch (error) {
-        logFrontendError(error, ErrorSeverity.Critical, { context: 'getMiaErrorAnalysis Gemini API call' });
+        logFrontendError(error, ErrorSeverity.Critical, { context: 'getMiaErrorAnalysis Backend API call' });
         throw new Error('Failed to get error analysis from Mia.');
     }
 };
@@ -77,61 +83,27 @@ ${projectContext}
 4.  **Be Precise:** Ensure the file paths are correct and the generated code is syntactically valid and follows the project's conventions.
 5.  **Output:** Return your response according to the provided JSON schema. You are not required to provide clarifying questions, an architectural proposal, or test cases for this task. Return empty arrays for those fields.
 `;
-    const implementationTaskSchema = {
-        type: Type.OBJECT,
-        properties: {
-            filePath: { type: Type.STRING, description: "The full path to the file that needs to be modified." },
-            description: { type: Type.STRING, description: "A one-sentence description of the change." },
-            details: { type: Type.STRING, description: "Precise, step-by-step details for a coding AI to follow. Use for descriptive plans." },
-            newContent: { type: Type.STRING, description: "The full, complete new content for the file. Use for direct code fixes." },
-        },
-        required: ['filePath', 'description']
-    };
-
-    const responseSchema = {
-    type: Type.OBJECT,
-    properties: {
-        clarifyingQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-        architecturalProposal: { type: Type.STRING },
-        implementationTasks: {
-            type: Type.ARRAY,
-            items: {
-                ...implementationTaskSchema,
-                required: ['filePath', 'description', 'newContent'], // newContent is now required for this operation
-            },
-            description: "A list of files to modify with their full new content."
-        },
-        testCases: { type: Type.ARRAY, items: { type: Type.STRING } }
-    },
-    required: ['implementationTasks']
-  };
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = 'gemini-2.5-pro';
-    const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
+    const apiCall = async () => {
+        const result = await generateContentViaBackend(prompt, 'gemini-2.5-pro', {
             responseMimeType: "application/json",
-            responseSchema,
-            thinkingConfig: { thinkingBudget: 32768 },
-        },
-    });
+        });
 
-    const tokenUsage = mapTokenUsage(response, model);
-    const jsonText = response.text;
-    const parsedResponse = JSON.parse(jsonText);
+        const parsedResponse = JSON.parse(result.resultText);
 
-    return {
-        clarifyingQuestions: [],
-        architecturalProposal: '',
-        testCases: [],
-        ...parsedResponse,
-        tokenUsage,
+        return {
+            clarifyingQuestions: parsedResponse.clarifyingQuestions || [],
+            architecturalProposal: parsedResponse.architecturalProposal || '',
+            implementationTasks: parsedResponse.implementationTasks || [],
+            testCases: parsedResponse.testCases || [],
+            dataSchema: parsedResponse.dataSchema || '',
+            tokenUsage: result.tokenUsage,
+        };
     };
+    return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateCodeFixPlan Gemini API call' });
+    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateCodeFixPlan Backend API call' });
     throw new Error('Failed to generate the code fix. The AI may have returned an invalid response or malformed JSON.');
   }
 };
