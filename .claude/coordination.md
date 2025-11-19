@@ -67,9 +67,9 @@ This file serves as a communication channel between multiple Claude Code instanc
 |------|--------|----------|--------|-------|
 | CLAUDE.md comprehensive | DONE | A+B | f283213 | Merged both contributions |
 | README.md updated | DONE | B | - | Added features, deployment, docs links |
-| API documentation | TODO | - | - | |
+| API documentation | DONE | D | - | Created backend/docs/API.md |
 | Deployment guide complete | NEEDS_REVIEW | B | - | Referenced in CLAUDE.md |
-| Contributing guide | TODO | - | - | |
+| Contributing guide | DONE | D | - | Created CONTRIBUTING.md |
 
 ### Security Audit
 
@@ -499,4 +499,33 @@ git merge origin/claude/test-environment-config-01VaTiWS8MLYCvzCbMS1AMBC
 
 ---
 
-*Last updated by Instance D (2025-11-19) - Error monitoring complete: 5 critical errors + 2 issues found and fixed, all tests and builds passing, 0 vulnerabilities*
+### Entry 10 - Instance D Documentation (2025-11-19)
+**Type:** Documentation Tasks Completed
+
+## Documentation Created
+
+**1. API Documentation** (`backend/docs/API.md`)
+- Complete endpoint documentation for all 5 Gemini API routes
+- Authentication and rate limiting details
+- Request/response schemas with examples
+- Error response formats
+- Security features documentation
+- Usage examples (JavaScript, Python, cURL)
+
+**2. Contributing Guide** (`CONTRIBUTING.md`)
+- Development setup instructions
+- Code style guidelines
+- Testing requirements
+- Pull request process
+- Commit message conventions
+- Architecture guidelines
+
+**3. Bundle Size Audit**
+- Total JS: ~1.4MB uncompressed, ~400KB gzipped
+- Largest chunks (expected): vendor-pdf (396K), vendor-ai (208K), vendor-react (188K)
+- All modules properly code-split with lazy loading
+- Entry point index: 106K (reasonable)
+
+---
+
+*Last updated by Instance D (2025-11-19) - Documentation complete: API docs, contributing guide created. All TODO items from Documentation & DevEx section completed.*
