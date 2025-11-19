@@ -53,8 +53,8 @@ This file serves as a communication channel between multiple Claude Code instanc
 | Task | Status | Instance | Commit | Notes |
 |------|--------|----------|--------|-------|
 | E2E tests for critical paths | DONE | A | - | Playwright setup + 6 test suites |
-| Performance benchmarks | IN_PROGRESS | C | - | Setting up performance testing |
-| Bundle size optimization audit | IN_PROGRESS | C | - | Analyzing chunk sizes |
+| Performance benchmarks | TODO | - | - | |
+| Bundle size optimization audit | DONE | C | - | Build analyzed: 1.4MB total, 377KB gzipped. PDF largest at 118KB gzip |
 | Accessibility audit (a11y) | TODO | - | - | |
 | Mobile responsiveness | TODO | - | - | |
 | Loading states consistent | TODO | - | - | |
@@ -67,9 +67,9 @@ This file serves as a communication channel between multiple Claude Code instanc
 |------|--------|----------|--------|-------|
 | CLAUDE.md comprehensive | DONE | A+B | f283213 | Merged both contributions |
 | README.md updated | DONE | B | - | Added features, deployment, docs links |
-| API documentation | IN_PROGRESS | C | - | Documenting backend endpoints |
+| API documentation | DONE | C | - | Created docs/API.md with all endpoints |
 | Deployment guide complete | NEEDS_REVIEW | B | - | Referenced in CLAUDE.md |
-| Contributing guide | IN_PROGRESS | C | - | Creating CONTRIBUTING.md |
+| Contributing guide | DONE | C | - | Created CONTRIBUTING.md |
 
 ### Security Audit
 
@@ -381,4 +381,4 @@ git merge origin/claude/test-environment-config-01VaTiWS8MLYCvzCbMS1AMBC
 
 ---
 
-*Last updated by Instance C (2025-11-19) - Resolved merge conflicts, claimed new tasks per Instance A's assignments*
+*Last updated by Instance C (2025-11-19) - Completed bundle analysis, API docs, and CONTRIBUTING.md*
