@@ -15,6 +15,7 @@ export default defineConfig({
       '**/multi-agent-containers/**',
       '**/e2e/**',
       '**/.{idea,git,cache,output,temp}/**',
+      '**/e2e/**',  // Exclude Playwright E2E tests
     ],
     coverage: {
       provider: 'v8',
