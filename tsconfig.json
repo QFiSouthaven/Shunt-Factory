@@ -33,6 +33,7 @@
     "backend",
     "multi-agent-containers",
     "backup",
+    "e2e",
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/__tests__/**",
