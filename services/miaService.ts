@@ -139,11 +139,16 @@ export const executeAndSelfCorrect = async (
     while (attempts < maxAttempts) {
         attempts++;
 
-        // Execute the code
-        const executionResult = await executeCode(currentCode);
-        lastResult = executionResult.output;
+        // Execute the code (assuming JavaScript)
+        const executionResult = await executeCode('javascript', currentCode);
+        lastResult = executionResult;
 
-        if (executionResult.success) {
+        // Check if execution was successful (no error in output)
+        const hasError = lastResult.toLowerCase().includes('error') ||
+                        lastResult.toLowerCase().includes('exception') ||
+                        lastResult.toLowerCase().includes('failed');
+
+        if (!hasError) {
             return { success: true, result: lastResult, attempts };
         }
 

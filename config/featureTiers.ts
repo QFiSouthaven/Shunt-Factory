@@ -23,6 +23,11 @@ export const tabTiers: Record<MissionControlTabKey, FeatureTierConfig> = {
     freeUsesAllowed: 3,
     description: 'Multi-step AI workflow orchestration'
   },
+  foundry: {
+    tier: 'pro',
+    freeUsesAllowed: 3,
+    description: 'Multi-agent code review system'
+  },
   framework: {
     tier: 'pro',
     freeUsesAllowed: 3,
@@ -32,6 +37,21 @@ export const tabTiers: Record<MissionControlTabKey, FeatureTierConfig> = {
     tier: 'pro',
     freeUsesAllowed: 3,
     description: 'Job queue and AI tool execution system'
+  },
+  ui_builder: {
+    tier: 'pro',
+    freeUsesAllowed: 3,
+    description: 'AI-powered UI component builder'
+  },
+  orchestrator: {
+    tier: 'pro',
+    freeUsesAllowed: 3,
+    description: 'Multi-agent orchestration system'
+  },
+  serendipity_engine: {
+    tier: 'pro',
+    freeUsesAllowed: 3,
+    description: 'AI-driven discovery and insight generation'
   },
 
   // FREE TIER - Unlimited
@@ -44,6 +64,21 @@ export const tabTiers: Record<MissionControlTabKey, FeatureTierConfig> = {
     tier: 'free',
     freeUsesAllowed: 0,
     description: 'Direct AI chat interface'
+  },
+  anthropic_chat: {
+    tier: 'free',
+    freeUsesAllowed: 0,
+    description: 'Anthropic Claude chat interface'
+  },
+  developers: {
+    tier: 'free',
+    freeUsesAllowed: 0,
+    description: 'Developer tools and utilities'
+  },
+  foundry_humanity_last_tool: {
+    tier: 'free',
+    freeUsesAllowed: 0,
+    description: 'Humanity-centered foundry tool'
   },
   settings: {
     tier: 'free',
