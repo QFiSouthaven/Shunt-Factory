@@ -108,17 +108,9 @@ const Settings: React.FC = () => {
                         <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-6">
                             <h3 className="font-semibold text-lg text-gray-200 mb-4 flex items-center gap-2">
                                 <CpuChipIcon className="w-6 h-6 text-yellow-400" />
-                                Local Model Fallback
+                                Local Model (LM Studio)
                             </h3>
                             <div className="space-y-4">
-                                <ToggleSwitch
-                                    id="localModelFallbackEnabled"
-                                    label="Enable Fallback to Local Model"
-                                    checked={settings.localModelFallbackEnabled}
-                                    onChange={(checked) => updateSetting('localModelFallbackEnabled', checked)}
-                                />
-                                <p className="text-xs text-gray-500 pl-2 -mt-2">If a Gemini API call fails due to rate limiting, automatically retry the request using a local model via an LM Studio compatible endpoint.</p>
-                                
                                 <div>
                                     <label htmlFor="lmStudioEndpoint" className="block text-sm font-medium text-gray-400">LM Studio API Endpoint</label>
                                     <input
@@ -129,9 +121,17 @@ const Settings: React.FC = () => {
                                         onChange={handleSettingChange}
                                         placeholder="e.g., http://localhost:1234/v1/chat/completions"
                                         className="mt-1 w-full p-2 bg-gray-900 border border-gray-600 rounded-md text-gray-200"
-                                        disabled={!settings.localModelFallbackEnabled}
                                     />
+                                    <p className="text-xs text-gray-500 mt-2">Configure to use LM Studio as a primary model in Shunt Actions, or as a fallback when rate limited.</p>
                                 </div>
+
+                                <ToggleSwitch
+                                    id="localModelFallbackEnabled"
+                                    label="Enable Automatic Fallback"
+                                    checked={settings.localModelFallbackEnabled}
+                                    onChange={(checked) => updateSetting('localModelFallbackEnabled', checked)}
+                                />
+                                <p className="text-xs text-gray-500 pl-2 -mt-2">If a Gemini API call fails due to rate limiting, automatically retry using the local model.</p>
                             </div>
                         </div>
 
