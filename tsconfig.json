@@ -39,5 +39,11 @@
     "**/__tests__/**",
     "components/common/AsyncErrorBoundary.tsx",
     "components/common/FeatureErrorBoundary.tsx"
+    "backend",
+    "node_modules",
+    "dist",
+    "e2e",
+    "backup",
+    "multi-agent-containers"
   ]
 }

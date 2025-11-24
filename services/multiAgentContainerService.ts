@@ -145,6 +145,7 @@ function getWorkflowComplexity(action: ShuntAction): 'simple' | 'complex' {
     ShuntAction.MAKE_ACTIONABLE,
     ShuntAction.BUILD_A_SKILL,
     ShuntAction.GENERATE_ORACLE_QUERY,
+    ShuntAction.MY_COMMAND,
   ];
 
   return complexActions.includes(action) ? 'complex' : 'simple';

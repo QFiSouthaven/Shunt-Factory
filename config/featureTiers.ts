@@ -33,6 +33,16 @@ export const tabTiers: Record<MissionControlTabKey, FeatureTierConfig> = {
     freeUsesAllowed: 3,
     description: 'Architecture visualization and Foundry multi-agent system'
   },
+  foundry: {
+    tier: 'free',
+    freeUsesAllowed: 0,
+    description: 'Multi-agent code review system (7 agents)'
+  },
+  foundry_humanity_last_tool: {
+    tier: 'pro',
+    freeUsesAllowed: 3,
+    description: 'Elite 6-agent strategic task force'
+  },
   tool_for_ai: {
     tier: 'pro',
     freeUsesAllowed: 3,
@@ -42,6 +52,7 @@ export const tabTiers: Record<MissionControlTabKey, FeatureTierConfig> = {
     tier: 'pro',
     freeUsesAllowed: 3,
     description: 'AI-powered UI component builder'
+    description: 'Visual UI component builder'
   },
   orchestrator: {
     tier: 'pro',
@@ -52,6 +63,20 @@ export const tabTiers: Record<MissionControlTabKey, FeatureTierConfig> = {
     tier: 'pro',
     freeUsesAllowed: 3,
     description: 'AI-driven discovery and insight generation'
+  anthropic_chat: {
+    tier: 'free',
+    freeUsesAllowed: 0,
+    description: 'Anthropic Claude chat interface'
+  },
+  developers: {
+    tier: 'free',
+    freeUsesAllowed: 0,
+    description: 'Developer tools and utilities'
+  },
+  serendipity_engine: {
+    tier: 'pro',
+    freeUsesAllowed: 3,
+    description: 'AI-driven creative exploration engine'
   },
 
   // FREE TIER - Unlimited

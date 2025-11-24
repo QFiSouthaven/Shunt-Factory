@@ -112,7 +112,7 @@ describe('withRetries', () => {
     // Third attempt (no more retries) - should have the error
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
-    expect(result.message).toContain('429');
+    expect((result as Error).message).toContain('429');
   });
 
   it('enforces max retries of 3 attempts', async () => {
@@ -137,7 +137,7 @@ describe('withRetries', () => {
     // Should throw after max retries
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
-    expect(result.message).toContain('429: Rate limited');
+    expect((result as Error).message).toContain('429: Rate limited');
   });
 
   it('does not retry non-rate-limit errors', async () => {
@@ -148,7 +148,7 @@ describe('withRetries', () => {
 
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
-    expect(result.message).toContain('Network error');
+    expect((result as Error).message).toContain('Network error');
     expect(apiCall).toHaveBeenCalledTimes(1);
   });
 
@@ -160,7 +160,7 @@ describe('withRetries', () => {
 
     const result = await promise;
     expect(result).toBeInstanceOf(Error);
-    expect(result.message).toContain('Authentication failed');
+    expect((result as Error).message).toContain('Authentication failed');
     expect(apiCall).toHaveBeenCalledTimes(1);
   });
 
