@@ -144,7 +144,7 @@ function getWorkflowComplexity(action: ShuntAction): 'simple' | 'complex' {
   const complexActions = [
     ShuntAction.MAKE_ACTIONABLE,
     ShuntAction.BUILD_A_SKILL,
-    ShuntAction.COMPREHENSIVE_ANALYSIS,
+    ShuntAction.MY_COMMAND,
   ];
 
   return complexActions.includes(action) ? 'complex' : 'simple';

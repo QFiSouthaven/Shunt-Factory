@@ -18,7 +18,10 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 // Lazy load components for code splitting and on-demand loading
 const Shunt = lazy(() => import('../shunt/Shunt'));
 const Weaver = lazy(() => import('../weaver/Weaver'));
-// Foundry is now loaded inside Framework component
+// Foundry is available both as standalone tab (with hierarchical Humanity's Last Tool)
+// and also inside Framework component for simulation view
+const Foundry = lazy(() => import('../foundry/Foundry'));
+const HumanityLastTool = lazy(() => import('../foundry/HumanityLastTool'));
 const Chat = lazy(() => import('../chat/Chat'));
 const ImageAnalysis = lazy(() => import('../image_analysis/ImageAnalysis'));
 const Oraculum = lazy(() => import('../oraculum/Oraculum'));
@@ -35,7 +38,22 @@ const Framework = lazy(() => import('../framework/Framework'));
 const tabs: MissionControlTab[] = [
     { key: 'shunt', label: 'Shunt', icon: <SparklesIcon className="w-5 h-5" />, component: Shunt },
     { key: 'weaver', label: 'Weaver', icon: <BrainIcon className="w-5 h-5" />, component: Weaver },
-    // Foundry is now accessible through Framework tab - removed from main nav
+    {
+        key: 'foundry',
+        label: 'Foundry',
+        icon: <BranchingIcon className="w-5 h-5" />,
+        component: Foundry,
+        children: [
+            {
+                key: 'foundry_humanity_last_tool',
+                label: "Humanity's Last Tool",
+                icon: <StarIcon className="w-4 h-4" />,
+                component: HumanityLastTool,
+                requiredTier: 'Pro',
+                parent: 'foundry'
+            }
+        ]
+    },
     { key: 'framework', label: 'Framework', icon: <CpuChipIcon className="w-5 h-5" />, component: Framework },
     { key: 'deploy', label: 'Deploy', icon: <ServerStackIcon className="w-5 h-5" />, component: Deploy },
     { key: 'chat', label: 'Chat', icon: <ChatBubbleLeftRightIcon className="w-5 h-5" />, component: Chat },

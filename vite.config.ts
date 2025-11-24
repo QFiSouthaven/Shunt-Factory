@@ -16,8 +16,6 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [
         react({
-          // Enable Fast Refresh
-          fastRefresh: true,
           // Babel configuration for production optimizations
           babel: isProduction ? {
             plugins: [

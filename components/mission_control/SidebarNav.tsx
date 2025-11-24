@@ -1,13 +1,7 @@
 import React, { useState } from 'react';
 import { MissionControlTab, MissionControlTabKey } from '../../types';
-import { AppIcon, ChevronDownIcon, ChevronRightIcon, LockClosedIcon, StarIcon } from '../icons';
+import { AppIcon, ChevronDownIcon, ChevronRightIcon, LockClosedIcon } from '../icons';
 import { useSubscription } from '../../context/SubscriptionContext';
-import {
-    tabTiers,
-    isFeatureLocked,
-    getRemainingUses,
-    incrementFeatureUsage
-} from '../../config/featureTiers';
 
 interface SidebarNavProps {
     tabs: MissionControlTab[];
@@ -22,75 +16,44 @@ interface TabItemProps {
     onTabClick: (tabKey: MissionControlTabKey) => void;
     isOpen: boolean;
     tier: 'Free' | 'Pro' | 'Enterprise';
-    onShowUpgrade?: () => void;
 }
 
-const TabItem: React.FC<TabItemProps> = ({ tab, activeTab, onTabClick, isOpen, tier, onShowUpgrade }) => {
+const TabItem: React.FC<TabItemProps> = ({ tab, activeTab, onTabClick, isOpen, tier }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const hasChildren = tab.children && tab.children.length > 0;
 
-    // Get feature tier config
-    const featureConfig = tabTiers[tab.key];
-    const featureTier = featureConfig?.tier || 'free';
-    const isPro = tier === 'Pro' || tier === 'Enterprise';
-
-    // Check if feature is greyed out (low value)
-    const isGreyedOut = featureTier === 'greyed';
-
-    // Check if feature is locked (pro feature with no remaining uses)
-    const isLocked = featureTier === 'pro' && isFeatureLocked(tab.key, isPro);
-    const remainingUses = featureTier === 'pro' ? getRemainingUses(tab.key, isPro) : Infinity;
-
-    // Check if user has access
-    const hasAccess = !isGreyedOut && !isLocked;
+    // Check if user has required tier
+    const hasAccess = !tab.requiredTier ||
+                      tier === 'Enterprise' ||
+                      (tier === 'Pro' && tab.requiredTier === 'Pro');
 
     const isActive = activeTab === tab.key ||
                      (tab.children?.some(child => child.key === activeTab) ?? false);
 
     const handleClick = () => {
-        if (isGreyedOut) {
-            // Greyed out features are disabled
-            return;
-        }
-
-        if (isLocked) {
-            // Show upgrade modal
-            onShowUpgrade?.();
+        if (!hasAccess) {
+            // Could open upgrade modal here
             return;
         }
 
         if (hasChildren) {
             setIsExpanded(!isExpanded);
         } else {
-            // Track usage for pro features
-            if (featureTier === 'pro' && !isPro) {
-                incrementFeatureUsage(tab.key);
-            }
             onTabClick(tab.key);
         }
-    };
-
-    // Generate tooltip text
-    const getTooltip = () => {
-        if (isGreyedOut) return `${tab.label} - Coming soon`;
-        if (isLocked) return `${tab.label} - Upgrade to Pro`;
-        if (featureTier === 'pro' && !isPro) return `${tab.label} (${remainingUses} uses left)`;
-        return tab.label;
     };
 
     return (
         <li>
             <button
                 onClick={handleClick}
-                title={getTooltip()}
+                title={!hasAccess ? `${tab.label} (${tab.requiredTier} tier required)` : tab.label}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors
-                    ${isGreyedOut
-                        ? 'opacity-10 cursor-not-allowed text-gray-600'
-                        : isActive
-                            ? 'bg-fuchsia-500/10 text-fuchsia-300'
-                            : isLocked
-                                ? 'text-gray-600 cursor-not-allowed'
-                                : 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
+                    ${isActive
+                    ? 'bg-fuchsia-500/10 text-fuchsia-300'
+                    : hasAccess
+                        ? 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200'
+                        : 'text-gray-600 cursor-not-allowed'
                     }
                     ${!isOpen ? 'justify-center' : ''}
                 `}
@@ -99,18 +62,7 @@ const TabItem: React.FC<TabItemProps> = ({ tab, activeTab, onTabClick, isOpen, t
                 {isOpen && (
                     <>
                         <span className="flex-grow text-left">{tab.label}</span>
-                        {/* PRO badge */}
-                        {featureTier === 'pro' && !isPro && !isLocked && (
-                            <span className="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded">
-                                {remainingUses}
-                            </span>
-                        )}
-                        {/* Locked icon */}
-                        {isLocked && <LockClosedIcon className="w-4 h-4 text-gray-500" />}
-                        {/* PRO star for pro users */}
-                        {featureTier === 'pro' && isPro && (
-                            <StarIcon className="w-4 h-4 text-amber-400" />
-                        )}
+                        {!hasAccess && <LockClosedIcon className="w-4 h-4" />}
                         {hasChildren && hasAccess && (
                             isExpanded
                                 ? <ChevronDownIcon className="w-4 h-4" />
@@ -131,7 +83,6 @@ const TabItem: React.FC<TabItemProps> = ({ tab, activeTab, onTabClick, isOpen, t
                             onTabClick={onTabClick}
                             isOpen={isOpen}
                             tier={tier}
-                            onShowUpgrade={onShowUpgrade}
                         />
                     ))}
                 </ul>
@@ -142,11 +93,6 @@ const TabItem: React.FC<TabItemProps> = ({ tab, activeTab, onTabClick, isOpen, t
 
 const SidebarNav: React.FC<SidebarNavProps> = ({ tabs, activeTab, onTabClick, isOpen }) => {
     const { tier } = useSubscription();
-
-    // Navigate to subscription page when user needs to upgrade
-    const handleShowUpgrade = () => {
-        onTabClick('subscription');
-    };
 
     return (
         <nav
@@ -172,7 +118,6 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ tabs, activeTab, onTabClick, is
                         onTabClick={onTabClick}
                         isOpen={isOpen}
                         tier={tier}
-                        onShowUpgrade={handleShowUpgrade}
                     />
                 ))}
             </ul>
