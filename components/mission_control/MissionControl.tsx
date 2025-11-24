@@ -18,6 +18,8 @@ import { useMediaQuery } from '../../hooks/useMediaQuery';
 // Lazy load components for code splitting and on-demand loading
 const Shunt = lazy(() => import('../shunt/Shunt'));
 const Weaver = lazy(() => import('../weaver/Weaver'));
+// Foundry is available both as standalone tab (with hierarchical Humanity's Last Tool)
+// and also inside Framework component for simulation view
 const Foundry = lazy(() => import('../foundry/Foundry'));
 const HumanityLastTool = lazy(() => import('../foundry/HumanityLastTool'));
 const Chat = lazy(() => import('../chat/Chat'));

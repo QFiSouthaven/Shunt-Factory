@@ -1,0 +1,66 @@
+# Cloud Build configuration for CI/CD pipeline
+
+steps:
+  # Step 1: Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/shunt-factory-backend:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/shunt-factory-backend:latest'
+      - '.'
+    dir: 'backend'
+
+  # Step 2: Push Docker image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/shunt-factory-backend:$COMMIT_SHA'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/shunt-factory-backend:latest'
+
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'shunt-factory-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/shunt-factory-backend:$COMMIT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '0'
+      - '--timeout'
+      - '300'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,GCP_PROJECT_ID=$PROJECT_ID,ENABLE_CLOUD_LOGGING=true,LOG_LEVEL=info'
+      - '--set-secrets'
+      - 'GEMINI_API_KEY=gemini-api-key:latest,CLIENT_API_KEYS=client-api-keys:latest'
+
+# Store images in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/shunt-factory-backend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/shunt-factory-backend:latest'
+
+# Build timeout
+timeout: 1200s
+
+# Options
+options:
+  machineType: 'N1_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,192 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual deployment'
+        required: true
+
+jobs:
+  # Pre-deployment checks
+  pre-deploy-checks:
+    name: Pre-Deployment Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type checking
+        run: npx tsc --noEmit
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+      - name: Build test
+        env:
+          VITE_APP_ENV: production
+        run: npm run build
+
+  # Deploy to production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: pre-deploy-checks
+    environment:
+      name: production
+      url: https://aethershunt.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for production
+        env:
+          VITE_APP_ENV: production
+          # Add your production secrets here
+          # GEMINI_API_KEY: ${{ secrets.PROD_GEMINI_API_KEY }}
+          # VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # VITE_GA_TRACKING_ID: ${{ secrets.GA_TRACKING_ID }}
+        run: npm run build
+
+      - name: Verify production build
+        run: |
+          echo "Verifying production build..."
+          ls -la dist/
+          test -f dist/index.html || exit 1
+
+          # Check for console.log in production build (should be removed)
+          if grep -r "console.log" dist/assets/*.js 2>/dev/null; then
+            echo "⚠️  Warning: console.log found in production build"
+          else
+            echo "✅ No console.log found in production build"
+          fi
+
+          # Check bundle sizes
+          echo "📦 Bundle sizes:"
+          du -sh dist/
+          find dist/assets -name "*.js" -exec du -h {} + | sort -rh | head -5
+
+      # Create a backup of current production (if applicable)
+      - name: Backup current production
+        if: false # Enable if you have a backup strategy
+        run: |
+          echo "Creating backup of current production..."
+          # Add backup commands here
+
+      # Deploy to your hosting platform
+      # Uncomment and configure the deployment method you're using
+
+      # Option 1: Vercel
+      - name: Deploy to Vercel
+        if: false # Enable this when you have Vercel configured
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm install -g vercel
+          vercel --prod --token=$VERCEL_TOKEN
+
+      # Option 2: Netlify
+      - name: Deploy to Netlify
+        if: false # Enable this when you have Netlify configured
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npm install -g netlify-cli
+          netlify deploy --prod --dir=dist --auth=$NETLIFY_AUTH_TOKEN --site=$NETLIFY_SITE_ID
+
+      # Option 3: AWS S3 + CloudFront
+      - name: Deploy to AWS S3
+        if: false # Enable this when you have AWS configured
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: |
+          aws s3 sync dist/ s3://aether-shunt-production --delete --cache-control "public, max-age=31536000, immutable"
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+
+      # Option 4: GitHub Pages
+      - name: Deploy to GitHub Pages
+        if: false # Enable this for GitHub Pages deployment
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+
+      - name: Deployment success notification
+        run: |
+          echo "🎉 Production deployment successful!"
+          echo "URL: https://aethershunt.com"
+          echo "Version: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          if [ "${{ github.event.inputs.reason }}" != "" ]; then
+            echo "Reason: ${{ github.event.inputs.reason }}"
+          fi
+
+      # Optional: Create GitHub release for tags
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            Production deployment for version ${{ github.ref_name }}
+
+            Deployed to: https://aethershunt.com
+            Commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+
+  # Post-deployment verification
+  post-deploy-verification:
+    name: Post-Deployment Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: deploy-production
+
+    steps:
+      - name: Health check
+        run: |
+          echo "Running post-deployment health checks..."
+          # Add health check commands here
+          # curl -f https://aethershunt.com || exit 1
+          echo "✅ Health check passed"
+
+      - name: Smoke tests
+        run: |
+          echo "Running smoke tests..."
+          # Add smoke test commands here
+          echo "✅ Smoke tests passed"

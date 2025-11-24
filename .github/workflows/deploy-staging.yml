@@ -1,0 +1,88 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual deployment'
+        required: false
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging Environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://staging.aethershunt.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for staging
+        env:
+          VITE_APP_ENV: staging
+          # Add your staging secrets here
+          # GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
+        run: npm run build
+
+      - name: Run build verification
+        run: |
+          echo "Verifying build output..."
+          ls -la dist/
+          test -f dist/index.html || exit 1
+          echo "✅ Build verification passed"
+
+      # Deploy to Vercel (example)
+      - name: Deploy to Vercel
+        if: false # Enable this when you have Vercel configured
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm install -g vercel
+          vercel --prod --token=$VERCEL_TOKEN
+
+      # Deploy to Netlify (alternative example)
+      - name: Deploy to Netlify
+        if: false # Enable this when you have Netlify configured
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npm install -g netlify-cli
+          netlify deploy --prod --dir=dist --auth=$NETLIFY_AUTH_TOKEN --site=$NETLIFY_SITE_ID
+
+      # Deploy to AWS S3 + CloudFront (alternative example)
+      - name: Deploy to AWS S3
+        if: false # Enable this when you have AWS configured
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: |
+          aws s3 sync dist/ s3://aether-shunt-staging --delete
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+
+      - name: Deployment notification
+        run: |
+          echo "🚀 Staging deployment completed!"
+          echo "URL: https://staging.aethershunt.com"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          if [ "${{ github.event.inputs.reason }}" != "" ]; then
+            echo "Reason: ${{ github.event.inputs.reason }}"
+          fi

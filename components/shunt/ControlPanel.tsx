@@ -283,10 +283,11 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onShunt, onModularShunt, on
                         disabled={isLoading}
                         className="bg-gray-700/50 border border-gray-600 text-xs text-gray-200 rounded-md pl-2 pr-7 py-1 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors duration-200 hover:border-gray-500"
                         aria-label="Select AI model"
-                        title="Select the Gemini model for simple Shunt Actions."
+                        title="Select the AI model for Shunt Actions."
                     >
                         <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                         <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                        <option value="lm-studio">LM Studio (Local)</option>
                     </select>
                 </div>
                 <div className="px-3 py-2 mb-4 text-xs text-center text-gray-400 bg-gray-900/40 rounded-md">

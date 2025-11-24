@@ -1,12 +1,15 @@
 // components/framework/Framework.tsx
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import TabFooter from '../common/TabFooter';
 import { useTelemetry } from '../../context/TelemetryContext';
-import { CpuChipIcon } from '../icons';
+import { CpuChipIcon, BranchingIcon } from '../icons';
 import ConfigurationPanel from './ConfigurationPanel';
 import SimulationPanel from './SimulationPanel';
 import { Hyperparameters, Metrics, LiveInspectorData, LogEntry } from './types';
+import Loader from '../Loader';
+
+const Foundry = lazy(() => import('../foundry/Foundry'));
 
 const initialHyperparameters: Hyperparameters = {
   learningRate: 0.001,
@@ -21,9 +24,10 @@ const initialHyperparameters: Hyperparameters = {
 
 const Framework: React.FC = () => {
     const { updateTelemetryContext } = useTelemetry();
+    const [activeView, setActiveView] = useState<'simulation' | 'foundry'>('simulation');
     const [hyperparameters, setHyperparameters] = useState<Hyperparameters>(initialHyperparameters);
     const [simulationState, setSimulationState] = useState<'idle' | 'running' | 'paused' | 'finished'>('idle');
-    
+
     const simulationInterval = useRef<number | null>(null);
 
     const initialMetrics: Metrics = {
@@ -134,35 +138,74 @@ const Framework: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full">
-            <div className="flex-grow p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
-                <div className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto pr-2">
-                    <header>
-                        <h2 className="text-2xl font-semibold text-white flex items-center gap-3">
-                            <CpuChipIcon className="w-7 h-7 text-fuchsia-400" />
-                            Live RL Simulation
-                        </h2>
-                        <p className="text-gray-400 mt-2">
-                            Configure, run, and inspect a simulated Deep Q-Network (DQN) training process in real-time.
-                        </p>
-                    </header>
-                    <ConfigurationPanel 
-                        params={hyperparameters} 
-                        onParamChange={setHyperparameters}
-                        isRunning={simulationState === 'running'}
-                    />
-                </div>
-                <div className="lg:col-span-2 overflow-hidden h-full">
-                    <SimulationPanel 
-                        metrics={metrics}
-                        inspectorData={inspectorData}
-                        onStart={handleStart}
-                        onStop={handleStop}
-                        onReset={handleReset}
-                        state={simulationState}
-                        hyperparameters={hyperparameters}
-                    />
-                </div>
+            {/* Sub-navigation for Framework views */}
+            <div className="flex gap-2 px-4 pt-4 border-b border-gray-700/50">
+                <button
+                    onClick={() => setActiveView('simulation')}
+                    className={`px-4 py-2 rounded-t-lg font-medium transition-colors flex items-center gap-2 ${
+                        activeView === 'simulation'
+                            ? 'bg-fuchsia-500/20 text-fuchsia-300 border-b-2 border-fuchsia-400'
+                            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/30'
+                    }`}
+                >
+                    <CpuChipIcon className="w-4 h-4" />
+                    RL Simulation
+                </button>
+                <button
+                    onClick={() => setActiveView('foundry')}
+                    className={`px-4 py-2 rounded-t-lg font-medium transition-colors flex items-center gap-2 ${
+                        activeView === 'foundry'
+                            ? 'bg-fuchsia-500/20 text-fuchsia-300 border-b-2 border-fuchsia-400'
+                            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/30'
+                    }`}
+                >
+                    <BranchingIcon className="w-4 h-4" />
+                    Foundry
+                </button>
             </div>
+
+            {/* Content Area */}
+            {activeView === 'simulation' ? (
+                <div className="flex-grow p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
+                    <div className="lg:col-span-1 flex flex-col gap-6 overflow-y-auto pr-2">
+                        <header>
+                            <h2 className="text-2xl font-semibold text-white flex items-center gap-3">
+                                <CpuChipIcon className="w-7 h-7 text-fuchsia-400" />
+                                Live RL Simulation
+                            </h2>
+                            <p className="text-gray-400 mt-2">
+                                Configure, run, and inspect a simulated Deep Q-Network (DQN) training process in real-time.
+                            </p>
+                        </header>
+                        <ConfigurationPanel
+                            params={hyperparameters}
+                            onParamChange={setHyperparameters}
+                            isRunning={simulationState === 'running'}
+                        />
+                    </div>
+                    <div className="lg:col-span-2 overflow-hidden h-full">
+                        <SimulationPanel
+                            metrics={metrics}
+                            inspectorData={inspectorData}
+                            onStart={handleStart}
+                            onStop={handleStop}
+                            onReset={handleReset}
+                            state={simulationState}
+                            hyperparameters={hyperparameters}
+                        />
+                    </div>
+                </div>
+            ) : (
+                <div className="flex-grow overflow-hidden">
+                    <Suspense fallback={
+                        <div className="flex h-full w-full items-center justify-center">
+                            <Loader />
+                        </div>
+                    }>
+                        <Foundry />
+                    </Suspense>
+                </div>
+            )}
             <TabFooter />
         </div>
     );

@@ -12,6 +12,16 @@ dist
 dist-ssr
 *.local
 
+# Environment files
+.env
+.env.local
+.env.*.local
+# Keep environment templates and base configs
+!.env.example
+!.env.development
+!.env.staging
+!.env.production
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +32,17 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Production
+/build
+/.cache
+
+# Testing
+/coverage
+/.nyc_output
+
+# Misc
+.DS_Store
+.env.backup
+.vercel
+.netlify

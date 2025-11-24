@@ -1,29 +1,31 @@
+/**
+ * Gemini Service - Backend API Version
+ * All AI calls go through the secure backend (API key not exposed in browser)
+ */
 
-
-import { GoogleGenAI, Chat, GenerateContentResponse, Type } from "@google/genai";
-// FIX: Added PromptModuleKey to the import from types.
-import { ShuntAction, GeminiResponse, TokenUsage, ImplementationTask, PromptModuleKey } from '../types';
-// FIX: Added constructModularPrompt to the import from prompts.
+import { ShuntAction, GeminiResponse, TokenUsage, PromptModuleKey } from '../types';
 import { getPromptForAction, constructModularPrompt } from './prompts';
 import { logFrontendError, ErrorSeverity } from "../utils/errorLogger";
 import { withRetries } from './apiUtils';
-// TRUST ARCHITECTURE: Double Validation - Import Zod schemas for runtime validation
 import { geminiDevelopmentPlanResponseSchema } from '../types/schemas';
+import {
+    performShuntViaBackend,
+    executeModularPromptViaBackend,
+    analyzeImageViaBackend,
+    generateContentViaBackend,
+} from './backendApiService';
 
+// Helper to create default token usage for functions that don't return it from backend
+const createDefaultTokenUsage = (model: string): TokenUsage => ({
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+    model,
+});
 
-const mapTokenUsage = (response: GenerateContentResponse, model: string): TokenUsage => {
-    return {
-        prompt_tokens: response.usageMetadata?.promptTokenCount ?? 0,
-        completion_tokens: response.usageMetadata?.candidatesTokenCount ?? 0,
-        total_tokens: response.usageMetadata?.totalTokenCount ?? 0,
-        model: model,
-    };
-};
-
-// FIX: Updated the function signature to accept optional context and priority arguments to match its usage in Shunt.tsx.
 export const performShunt = async (
-    text: string, 
-    action: ShuntAction, 
+    text: string,
+    action: ShuntAction,
     modelName: string,
     context?: string,
     priority?: string,
@@ -31,44 +33,15 @@ export const performShunt = async (
 ): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
   try {
     const apiCall = async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = getPromptForAction(text, action, context, priority, promptInjectionGuardEnabled);
-        
-        const isComplexAction = action === ShuntAction.MAKE_ACTIONABLE || action === ShuntAction.BUILD_A_SKILL;
-        const config = (isComplexAction && modelName.includes('pro')) ? { thinkingConfig: { thinkingBudget: 32768 } } : {};
-
-        const response = await ai.models.generateContent({
-            model: modelName,
-            contents: prompt,
-            config,
-        });
-        
-        const resultText = response.text;
-        // FIX: Replaced undefined variable `model` with the correct parameter `modelName`.
-        const tokenUsage = mapTokenUsage(response, modelName);
-        
-        if (action === ShuntAction.FORMAT_JSON || action === ShuntAction.MAKE_ACTIONABLE || action === ShuntAction.GENERATE_VAM_PRESET) {
-            let cleanedText = resultText.trim();
-            if (cleanedText.startsWith('```')) {
-                const firstNewLineIndex = cleanedText.indexOf('\n');
-                cleanedText = firstNewLineIndex !== -1 ? cleanedText.substring(firstNewLineIndex + 1) : cleanedText.substring(3);
-            }
-            if (cleanedText.endsWith('```')) {
-                cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-            }
-            return { resultText: cleanedText.trim(), tokenUsage };
-        }
-
-        return { resultText, tokenUsage };
+        return await performShuntViaBackend(text, action, modelName, context, priority, promptInjectionGuardEnabled);
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'performShunt Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'performShunt Backend API call' });
     throw error;
   }
 };
 
-// FIX: Added the missing 'executeModularPrompt' function.
 export const executeModularPrompt = async (
   text: string,
   modules: Set<PromptModuleKey>,
@@ -76,30 +49,19 @@ export const executeModularPrompt = async (
   priority?: string,
   promptInjectionGuardEnabled?: boolean
 ): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-  const model = 'gemini-2.5-pro'; // Modular prompts are complex, use Pro
-  const prompt = constructModularPrompt(text, modules, context, priority, promptInjectionGuardEnabled);
   try {
     const apiCall = async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          thinkingConfig: { thinkingBudget: 32768 },
-        }
-      });
-      return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+      const modulesArray = Array.from(modules);
+      return await executeModularPromptViaBackend(text, modulesArray, context, priority, promptInjectionGuardEnabled);
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'executeModularPrompt Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'executeModularPrompt Backend API call' });
     throw error;
   }
 };
 
-// FIX: Added the missing 'gradeOutput' function.
 export const gradeOutput = async (output: string, originalPrompt: string): Promise<{ score: number }> => {
-  const model = 'gemini-2.5-flash';
   const prompt = `You are a quality assurance AI. Your task is to grade an AI's output based on an original prompt.
 Provide a score from -10 (very bad) to +10 (excellent).
 Your response MUST be ONLY the score, like this: "Score: 8".
@@ -113,24 +75,18 @@ ${output}
 
   try {
     const apiCall = async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-      });
-      const resultText = response.text;
-      const scoreMatch = resultText.match(/Score:\s*(-?\d+)/);
+      const result = await generateContentViaBackend(prompt, 'gemini-2.5-flash');
+      const scoreMatch = result.resultText.match(/Score:\s*(-?\d+)/);
       const score = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
       return { score };
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'gradeOutput Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'gradeOutput Backend API call' });
     throw error;
   }
 };
 
-// FIX: Added the missing 'synthesizeDocuments' function.
 export const synthesizeDocuments = async (
   combinedContent: string,
   modelName: string
@@ -144,43 +100,28 @@ ${combinedContent}
 `;
   try {
     const apiCall = async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-      });
-      return { resultText: response.text, tokenUsage: mapTokenUsage(response, modelName) };
+      return await generateContentViaBackend(prompt, modelName);
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'synthesizeDocuments Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'synthesizeDocuments Backend API call' });
     throw error;
   }
 };
 
-// FIX: Added the missing 'generateRawText' function.
 export const generateRawText = async (prompt: string, modelName: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
   try {
     const apiCall = async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const config = modelName.includes('pro') ? { thinkingConfig: { thinkingBudget: 32768 } } : {};
-        const response = await ai.models.generateContent({
-            model: modelName,
-            contents: prompt,
-            config,
-        });
-        return { resultText: response.text, tokenUsage: mapTokenUsage(response, modelName) };
+        return await generateContentViaBackend(prompt, modelName);
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'generateRawText Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'generateRawText Backend API call' });
     throw error;
   }
 };
 
-// FIX: Added the missing 'generateOraculumInsights' function.
 export const generateOraculumInsights = async (eventsJson: string): Promise<string> => {
-  const model = 'gemini-2.5-pro';
   const prompt = `You are Oraculum, a senior data analyst AI. Analyze the following stream of telemetry events from the Aether Shunt application.
 Provide a concise, actionable report in Markdown format.
 
@@ -195,22 +136,15 @@ The report should include:
 ${eventsJson}
 ---
 `;
-  const apiCall = async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-          thinkingConfig: { thinkingBudget: 32768 },
-      }
-    });
-    return response.text;
-  };
 
   try {
+    const apiCall = async () => {
+      const result = await generateContentViaBackend(prompt, 'gemini-2.5-pro');
+      return result.resultText;
+    };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'generateOraculumInsights Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'generateOraculumInsights Backend API call' });
     throw error;
   }
 };
@@ -218,17 +152,11 @@ ${eventsJson}
 export const generateOrchestratorReport = async (prompt: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
   try {
     const apiCall = async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const model = 'gemini-2.5-flash';
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-        });
-        return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+        return await generateContentViaBackend(prompt, 'gemini-2.5-flash');
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'generateOrchestratorReport Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'generateOrchestratorReport Backend API call' });
     throw error;
   }
 };
@@ -249,79 +177,36 @@ ${metrics}
 `;
   try {
     const apiCall = async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const model = 'gemini-2.5-flash';
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-        });
-        return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+        return await generateContentViaBackend(prompt, 'gemini-2.5-flash');
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'generatePerformanceReport Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'generatePerformanceReport Backend API call' });
     throw error;
   }
 };
 
 export const getAIChatResponseWithContextFlag = async (prompt: string): Promise<{ answer: string; isContextRelated: boolean; tokenUsage: TokenUsage }> => {
-  const responseSchema = {
-    type: Type.OBJECT,
-    properties: {
-      answer: {
-        type: Type.STRING,
-        description: "The textual answer to the user's question."
-      },
-      isContextRelated: {
-        type: Type.BOOLEAN,
-        description: "A boolean flag that is TRUE if the provided context was used to generate the answer, and FALSE if the answer was generated from general knowledge because the context was not relevant."
-      }
-    },
-    required: ['answer', 'isContextRelated']
-  };
-
-  const model = 'gemini-2.5-flash';
-
   try {
     const apiCall = async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema,
-        },
+      const result = await generateContentViaBackend(prompt, 'gemini-2.5-flash', {
+        responseMimeType: "application/json",
       });
 
-      const tokenUsage = mapTokenUsage(response, model);
-      const jsonText = response.text;
-      const parsedResponse = JSON.parse(jsonText);
+      const parsedResponse = JSON.parse(result.resultText);
 
       return {
         answer: parsedResponse.answer || "Sorry, I couldn't generate a proper response.",
-        isContextRelated: parsedResponse.isContextRelated ?? true, // Default to true to avoid showing the notice on parsing errors
-        tokenUsage,
+        isContextRelated: parsedResponse.isContextRelated ?? true,
+        tokenUsage: result.tokenUsage,
       };
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'getAIChatResponseWithContextFlag Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'getAIChatResponseWithContextFlag Backend API call' });
     throw error;
   }
 };
-
-const implementationTaskSchema = {
-    type: Type.OBJECT,
-    properties: {
-        filePath: { type: Type.STRING, description: "The full path to the file that needs to be modified." },
-        description: { type: Type.STRING, description: "A one-sentence description of the change." },
-        details: { type: Type.STRING, description: "Precise, step-by-step details for a coding AI to follow. Use for descriptive plans." },
-        newContent: { type: Type.STRING, description: "The full, complete new content for the file. Use for direct code fixes." },
-    },
-    required: ['filePath', 'description']
-};
-
 
 export async function generateDevelopmentPlan(goal: string, context: string): Promise<GeminiResponse> {
   const prompt = `
@@ -348,77 +233,32 @@ ${goal}
 4.  **Suggest Test Cases:** Provide a list of simple, verifiable test cases to confirm the feature works as expected.
 `;
 
-    const responseSchema = {
-    type: Type.OBJECT,
-    properties: {
-        clarifyingQuestions: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-            description: "Questions to help the user refine the goal. If none, return an empty array."
-        },
-        architecturalProposal: {
-            type: Type.STRING,
-            description: "The technical approach to implementing the goal, referencing existing files and components."
-        },
-        implementationTasks: {
-            type: Type.ARRAY,
-            items: implementationTaskSchema,
-            description: "A list of specific, atomic tasks for the coding AI."
-        },
-        testCases: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-            description: "A list of simple, verifiable test cases to confirm the feature works as expected."
-        },
-        dataSchema: {
-            type: Type.STRING,
-            description: "A string containing TypeScript interfaces or type definitions for any new or relevant data structures for the request."
-        }
-    },
-    required: ['clarifyingQuestions', 'architecturalProposal', 'implementationTasks', 'testCases', 'dataSchema']
-  };
-
   try {
     const apiCall = async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const model = 'gemini-2.5-pro';
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema,
-                thinkingConfig: { thinkingBudget: 32768 },
-                temperature: 0.1,
-                topP: 0.9,
-                topK: 40,
-                maxOutputTokens: 4096,
-            },
+        const result = await generateContentViaBackend(prompt, 'gemini-2.5-pro', {
+            responseMimeType: "application/json",
+            temperature: 0.1,
+            topP: 0.9,
+            topK: 40,
+            maxOutputTokens: 4096,
         });
 
-        const tokenUsage = mapTokenUsage(response, model);
-        const jsonText = response.text;
-
-        // TRUST ARCHITECTURE: Double Validation Pattern
-        // Generation-Time Validation: responseSchema enforces structure at API level
-        // Runtime Validation: Zod schema validates after receiving response
-        const parsedResponse = JSON.parse(jsonText);
+        const parsedResponse = JSON.parse(result.resultText);
         const validatedResponse = geminiDevelopmentPlanResponseSchema.parse(parsedResponse);
 
         return {
             ...validatedResponse,
-            tokenUsage,
+            tokenUsage: result.tokenUsage,
         };
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateDevelopmentPlan Gemini API call (Double Validation Failed)' });
+    logFrontendError(error, ErrorSeverity.Critical, { context: 'generateDevelopmentPlan Backend API call (Double Validation Failed)' });
     throw error;
   }
 }
 
 export const generateProjectTome = async (projectContext: string, fileTree: string, componentDiagram: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    const model = 'gemini-2.5-pro';
     const prompt = `
 You are a "Tome Weaver" AI. Your purpose is to create a definitive, all-encompassing "Project Tome" from a provided codebase and pre-generated diagrams. This document should serve as the ultimate source of truth for any developer.
 
@@ -464,19 +304,11 @@ ${projectContext}
 
     try {
         const apiCall = async () => {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const response = await ai.models.generateContent({
-                model,
-                contents: prompt,
-                config: {
-                    thinkingConfig: { thinkingBudget: 32768 },
-                }
-            });
-            return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+            return await generateContentViaBackend(prompt, 'gemini-2.5-pro');
         };
         return await withRetries(apiCall);
     } catch (error) {
-        logFrontendError(error, ErrorSeverity.High, { context: 'generateProjectTome Gemini API call' });
+        logFrontendError(error, ErrorSeverity.High, { context: 'generateProjectTome Backend API call' });
         throw error;
     }
 };
@@ -487,16 +319,6 @@ export const analyzeImage = async (
 ): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
   try {
     const apiCall = async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const model = 'gemini-2.5-flash';
-
-      const imagePart = {
-        inlineData: {
-          data: image.base64Data,
-          mimeType: image.mimeType,
-        },
-      };
-      
       const enhancedPrompt = `
 You are an expert art director and 3D character artist providing a detailed analysis of the attached image.
 
@@ -519,34 +341,22 @@ Then, if the image contains a character, creature, or object suitable for a 3D m
 **User's Request:** ${prompt}
       `;
 
-      const textPart = {
-        text: enhancedPrompt,
-      };
-
-      const response = await ai.models.generateContent({
-        model,
-        contents: { parts: [imagePart, textPart] },
-      });
-
-      return { resultText: response.text, tokenUsage: mapTokenUsage(response, model) };
+      return await analyzeImageViaBackend(enhancedPrompt, image, 'gemini-2.5-flash');
     };
     return await withRetries(apiCall);
   } catch (error) {
-    logFrontendError(error, ErrorSeverity.High, { context: 'analyzeImage Gemini API call' });
+    logFrontendError(error, ErrorSeverity.High, { context: 'analyzeImage Backend API call' });
     throw error;
   }
 };
 
-export const startChat = (history?: { role: string, parts: { text: string }[] }[]): Chat => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    return ai.chats.create({
-        model: 'gemini-2.5-flash',
-        history: history
-    });
+// Note: Chat functionality requires different backend implementation
+// For now, this will throw an error - implement chat endpoint in backend if needed
+export const startChat = (history?: { role: string, parts: { text: string }[] }[]): never => {
+    throw new Error('Chat functionality not yet supported via backend API. Please implement /api/gemini/chat endpoint.');
 };
 
 export const generateApiDocumentation = async (projectContext: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    const model = 'gemini-2.5-pro';
     const prompt = `
 You are an expert technical writer specializing in API documentation. Your task is to analyze the provided source code and generate a comprehensive API reference document in Markdown format.
 
@@ -567,15 +377,14 @@ ${projectContext}
 ---
 `;
     try {
-        return await generateRawText(prompt, model);
+        return await generateRawText(prompt, 'gemini-2.5-pro');
     } catch (error) {
-        logFrontendError(error, ErrorSeverity.High, { context: 'generateApiDocumentation Gemini API call' });
+        logFrontendError(error, ErrorSeverity.High, { context: 'generateApiDocumentation Backend API call' });
         throw error;
     }
 };
 
 export const generateQualityReport = async (projectContext: string): Promise<{ resultText: string; tokenUsage: TokenUsage }> => {
-    const model = 'gemini-2.5-pro';
     const prompt = `
 You are a senior code reviewer AI with an expert eye for code quality, performance, and best practices in React/TypeScript applications. Your task is to conduct a thorough review of the provided source code and generate a "Code Quality & Refactoring Report".
 
@@ -600,18 +409,15 @@ ${projectContext}
 ---
 `;
     try {
-        return await generateRawText(prompt, model);
+        return await generateRawText(prompt, 'gemini-2.5-pro');
     } catch (error) {
-        logFrontendError(error, ErrorSeverity.High, { context: 'generateQualityReport Gemini API call' });
+        logFrontendError(error, ErrorSeverity.High, { context: 'generateQualityReport Backend API call' });
         throw error;
     }
 };
 
 /**
  * Generic content generation function used by autonomous services
- * @param prompt The prompt text
- * @param config Configuration options (temperature, response_mime_type, etc.)
- * @returns Generated content as string
  */
 export const generateContent = async (
     prompt: string,
@@ -625,31 +431,16 @@ export const generateContent = async (
 
     try {
         const apiCall = async () => {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const requestConfig: {
-                temperature?: number;
-                response_mime_type?: string;
-            } = {};
-
-            if (config?.temperature !== undefined) {
-                requestConfig.temperature = config.temperature;
-            }
-            if (config?.response_mime_type) {
-                requestConfig.response_mime_type = config.response_mime_type;
-            }
-
-            const response = await ai.models.generateContent({
-                model,
-                contents: prompt,
-                config: requestConfig,
+            const result = await generateContentViaBackend(prompt, model, {
+                temperature: config?.temperature,
+                responseMimeType: config?.response_mime_type,
             });
-
-            return response.text;
+            return result.resultText;
         };
 
         return await withRetries(apiCall);
     } catch (error) {
-        logFrontendError(error, ErrorSeverity.High, { context: 'generateContent Gemini API call' });
+        logFrontendError(error, ErrorSeverity.High, { context: 'generateContent Backend API call' });
         throw error;
     }
 };

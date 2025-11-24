@@ -477,7 +477,25 @@ const Shunt: React.FC = () => {
     }
 
     try {
-        const { resultText, tokenUsage } = await performShunt(sanitizedText, action as ShuntAction, selectedModel, bulletinContext, priority, settings.promptInjectionGuardEnabled);
+        let resultText: string;
+        let tokenUsage: TokenUsage;
+
+        // Check if using LM Studio as primary model
+        if (selectedModel === 'lm-studio') {
+            const promptForLocal = getPromptForAction(sanitizedText, action as ShuntAction, bulletinContext, priority, settings.promptInjectionGuardEnabled);
+            const lmResult = await callLmStudio(promptForLocal, settings.lmStudioEndpoint);
+            resultText = lmResult.resultText;
+            tokenUsage = {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+                model: 'lm-studio-local'
+            };
+        } else {
+            const geminiResult = await performShunt(sanitizedText, action as ShuntAction, selectedModel, bulletinContext, priority, settings.promptInjectionGuardEnabled);
+            resultText = geminiResult.resultText;
+            tokenUsage = geminiResult.tokenUsage;
+        }
 
         if (action === ShuntAction.BUILD_A_SKILL) {
             const files = parseSkillPackagePlan(resultText);
@@ -598,14 +616,32 @@ const Shunt: React.FC = () => {
     try {
       setModulesForLastRun(moduleNames);
 
-      const { resultText, tokenUsage } = await executeModularPrompt(sanitizedText, modules, bulletinContext, priority, settings.promptInjectionGuardEnabled);
-      
+      let resultText: string;
+      let tokenUsage: TokenUsage;
+
+      // Check if using LM Studio as primary model
+      if (selectedModel === 'lm-studio') {
+          const fullPrompt = constructModularPrompt(sanitizedText, modules, bulletinContext, priority, settings.promptInjectionGuardEnabled);
+          const lmResult = await callLmStudio(fullPrompt, settings.lmStudioEndpoint);
+          resultText = lmResult.resultText;
+          tokenUsage = {
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+              model: 'lm-studio-local'
+          };
+      } else {
+          const geminiResult = await executeModularPrompt(sanitizedText, modules, bulletinContext, priority, settings.promptInjectionGuardEnabled);
+          resultText = geminiResult.resultText;
+          tokenUsage = geminiResult.tokenUsage;
+      }
+
       setOutputText(resultText);
       audioService.playSound('receive');
-      
+
       incrementUsage('shuntRuns');
       setLastTokenUsage(tokenUsage);
-      
+
       telemetryService?.recordEvent({
         eventType: 'ai_response',
         interactionType: 'shunt_modular',
@@ -614,7 +650,7 @@ const Shunt: React.FC = () => {
         aiOutput: resultText.substring(0, 200),
         outcome: 'success',
         tokenUsage,
-        modelUsed: 'gemini-2.5-pro',
+        modelUsed: selectedModel === 'lm-studio' ? 'lm-studio-local' : 'gemini-2.5-pro',
         customData: { modules: Array.from(modules), priority }
       });
 
@@ -646,7 +682,7 @@ const Shunt: React.FC = () => {
       setIsLoading(false);
       setActiveShunt(null);
     }
-  }, [inputText, isLoading, validate, markAsTouched, telemetryService, getBulletinContext, history.length, checkRateLimit, handleApiError, incrementUsage, settings, tierDetails.shuntRuns, usage.shuntRuns, priority, callLmStudio]);
+  }, [inputText, isLoading, validate, markAsTouched, telemetryService, getBulletinContext, history.length, checkRateLimit, handleApiError, incrementUsage, settings, tierDetails.shuntRuns, usage.shuntRuns, priority, callLmStudio, selectedModel]);
 
   const handleCombinedShunt = useCallback(async (draggedAction: ShuntAction, targetAction: ShuntAction) => {
     if (isLoading) return;
@@ -658,17 +694,42 @@ const Shunt: React.FC = () => {
     audioService.playSound('send');
     
     try {
-        const firstPass = await performShunt(inputText, draggedAction, selectedModel, getBulletinContext(), priority, settings.promptInjectionGuardEnabled);
-        const secondPass = await performShunt(firstPass.resultText, targetAction, selectedModel, getBulletinContext(), priority, settings.promptInjectionGuardEnabled);
+        let firstResult: string;
+        let secondResult: string;
+        let combinedTokenUsage: TokenUsage;
 
-        setOutputText(secondPass.resultText);
+        // Check if using LM Studio as primary model
+        if (selectedModel === 'lm-studio') {
+            const firstPrompt = getPromptForAction(inputText, draggedAction, getBulletinContext(), priority, settings.promptInjectionGuardEnabled);
+            const firstLmResult = await callLmStudio(firstPrompt, settings.lmStudioEndpoint);
+            firstResult = firstLmResult.resultText;
+
+            const secondPrompt = getPromptForAction(firstResult, targetAction, getBulletinContext(), priority, settings.promptInjectionGuardEnabled);
+            const secondLmResult = await callLmStudio(secondPrompt, settings.lmStudioEndpoint);
+            secondResult = secondLmResult.resultText;
+
+            combinedTokenUsage = {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+                model: 'lm-studio-local'
+            };
+        } else {
+            const firstPass = await performShunt(inputText, draggedAction, selectedModel, getBulletinContext(), priority, settings.promptInjectionGuardEnabled);
+            const secondPass = await performShunt(firstPass.resultText, targetAction, selectedModel, getBulletinContext(), priority, settings.promptInjectionGuardEnabled);
+            secondResult = secondPass.resultText;
+
+            combinedTokenUsage = {
+                prompt_tokens: firstPass.tokenUsage.prompt_tokens + secondPass.tokenUsage.prompt_tokens,
+                completion_tokens: firstPass.tokenUsage.completion_tokens + secondPass.tokenUsage.completion_tokens,
+                total_tokens: firstPass.tokenUsage.total_tokens + secondPass.tokenUsage.total_tokens,
+                model: selectedModel,
+            };
+        }
+
+        setOutputText(secondResult);
         audioService.playSound('receive');
-        setLastTokenUsage({
-            prompt_tokens: firstPass.tokenUsage.prompt_tokens + secondPass.tokenUsage.prompt_tokens,
-            completion_tokens: firstPass.tokenUsage.completion_tokens + secondPass.tokenUsage.completion_tokens,
-            total_tokens: firstPass.tokenUsage.total_tokens + secondPass.tokenUsage.total_tokens,
-            model: selectedModel,
-        });
+        setLastTokenUsage(combinedTokenUsage);
 
     } catch (e: any) {
         handleApiError(e, { context: 'Shunt.handleCombinedShunt', actions: [draggedAction, targetAction], priority });
@@ -676,7 +737,7 @@ const Shunt: React.FC = () => {
         setIsLoading(false);
         setActiveShunt(null);
     }
-  }, [inputText, isLoading, selectedModel, handleApiError, getBulletinContext, priority, settings.promptInjectionGuardEnabled]);
+  }, [inputText, isLoading, selectedModel, handleApiError, getBulletinContext, priority, settings.promptInjectionGuardEnabled, settings.lmStudioEndpoint, callLmStudio]);
   
     const handleSynthesize = useCallback(async () => {
     if (tierDetails.shuntRuns !== 'unlimited' && usage.shuntRuns >= tierDetails.shuntRuns) {
