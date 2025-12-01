@@ -36,29 +36,33 @@ define: {
 },
 ```
 
-### ⚠️ ADDITIONAL CLEANUP REQUIRED
+### ✅ ADDITIONAL CLEANUP COMPLETED
 
-Three frontend files still reference `process.env.API_KEY`:
+Three frontend files that referenced `process.env.API_KEY` have been addressed:
 
-1. **components/chat/Chat.tsx:99**
-   ```typescript
-   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-   ```
+1. **components/chat/Chat.tsx** ✅ FIXED
+   - **Status:** Refactored to use backend proxy
+   - **Action:** Removed direct GoogleGenAI SDK initialization
+   - **Change:** Now uses `generateContent()` from `backendApiService.ts`
 
-2. **services/intelligenceService.ts:69**
-   ```typescript
-   this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-   ```
+2. **services/intelligenceService.ts** ✅ FIXED
+   - **Status:** Dead code removed
+   - **Action:** Removed unused GoogleGenAI import and initialization
+   - **Reason:** Service uses Xenova Transformers for client-side embeddings, never used the Gemini API
+   - **Note:** Service is not currently used in production
 
-3. **services/multiAgentOrchestrator.service.ts:60**
-   ```typescript
-   this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-   ```
-
-**REQUIRED ACTION:**
-- Verify these files are NOT being used in production (check if superseded by backend proxy)
-- If used: Refactor to use backend API proxy (`backendApiService.ts`)
-- If unused: Mark as deprecated or remove
+3. **services/multiAgentOrchestrator.service.ts** ⚠️ DISABLED PENDING REFACTORING
+   - **Status:** Feature temporarily disabled
+   - **Action:**
+     - Added security warning comments to service file
+     - Disabled multi-agent mode toggle in UI (ControlPanel.tsx)
+     - Updated UI with red warning message explaining security refactoring
+   - **Reason:** Service makes 12 sequential API calls and requires extensive backend refactoring
+   - **Next Steps:**
+     - Create backend endpoints for all 12 workflow stages
+     - Migrate orchestration logic to backend
+     - Re-enable feature once backend proxy is complete
+   - **User Impact:** Multi-agent mode toggle now shows as "Disabled" with security notice
 
 ### Secret Rotation Required 🔑
 **CRITICAL:** Any API keys that have been deployed with previous builds are **compromised**. They exist in:
@@ -199,7 +203,7 @@ test('should catch errors with ErrorBoundary', () => {
 |-------|----------|--------|--------|
 | API Keys in Client Bundle | CRITICAL | FIXED | Secret exposure prevented |
 | S3 Cache Misconfiguration | CRITICAL | FIXED | Update delivery restored |
-| Frontend Direct API Usage | HIGH | NEEDS REVIEW | 3 files flagged |
+| Frontend Direct API Usage | HIGH | FIXED | 2 refactored, 1 disabled |
 | Meta-Testing | MEDIUM | DOCUMENTED | False security |
 
 ---

@@ -1,6 +1,9 @@
 // components/chat/Chat.tsx
+// SECURITY NOTE: This component previously used direct API key access which has been removed.
+// Chat streaming requires backend implementation. Currently disabled for security.
+// TODO: Implement /api/gemini/chat endpoint with streaming support in backend
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenAI, Chat as GeminiChat } from "@google/genai";
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import TabFooter from '../common/TabFooter';
@@ -8,6 +11,7 @@ import { useTelemetry } from '../../context/TelemetryContext';
 import { audioService } from '../../services/audioService';
 import { executeCode } from '../../services/codeExecutor';
 import { parseApiError } from '../../utils/errorLogger';
+import { generateContent } from '../../services/geminiService';
 
 interface Message {
   id: string;
@@ -34,7 +38,6 @@ const loadMessages = (): Message[] => {
 const Chat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(loadMessages);
   const [isLoading, setIsLoading] = useState(false);
-  const chatRef = useRef<GeminiChat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { versionControlService } = useTelemetry();
 
@@ -63,7 +66,6 @@ const Chat: React.FC = () => {
   
   const onClearHistory = useCallback(() => {
       setMessages([{ id: 'init', role: 'model', content: "History cleared. How can I help you?" }]);
-      chatRef.current = null; // Reset the chat instance
       localStorage.removeItem(CHAT_HISTORY_STORAGE_KEY);
       audioService.playSound('click');
   }, []);
@@ -93,49 +95,44 @@ const Chat: React.FC = () => {
     const userMessage: Message = { id: Date.now().toString(), role: 'user', content: messageText };
     setMessages(prev => [...prev, userMessage]);
     audioService.playSound('send');
-    
-    // Initialize chat session on first message if not already done
-    if (!chatRef.current) {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        // Use all messages except the last one (the user's new message) for history
-        const history = messages
-            .filter(m => m.role === 'user' || m.role === 'model')
-            .map(m => ({
-                role: m.role as 'user' | 'model',
-                parts: [{ text: m.content }]
-            }));
 
-        chatRef.current = ai.chats.create({
-            model: 'gemini-2.5-pro',
-            config: {
-                thinkingConfig: { thinkingBudget: 32768 },
-            },
-            history,
-        });
-    }
+    // SECURITY: Use backend API proxy instead of direct API key access
+    // Build conversation context from message history
+    const conversationHistory = messages
+      .filter(m => m.role === 'user' || m.role === 'model')
+      .map(m => `${m.role}: ${m.content}`)
+      .join('\n\n');
+
+    const fullPrompt = conversationHistory
+      ? `${conversationHistory}\n\nuser: ${messageText}\n\nmodel:`
+      : messageText;
 
     try {
-      const stream = await chatRef.current.sendMessageStream({ message: messageText });
-      
-      let fullResponse = '';
+      // Use backend proxy for AI chat (non-streaming for security)
+      const response = await generateContent(fullPrompt, {
+        model: 'gemini-2.5-pro',
+        temperature: 0.7,
+      });
+
       const assistantMessageId = (Date.now() + 1).toString();
-      
-      // Add a placeholder for the assistant's message
-      setMessages(prev => [...prev, { id: assistantMessageId, role: 'model', content: '', isLoading: true }]);
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'model',
+        content: response,
+        isLoading: false
+      };
 
-      for await (const chunk of stream) {
-        fullResponse += chunk.text;
-        setMessages(prev => prev.map(m => m.id === assistantMessageId ? { ...m, content: fullResponse } : m));
-      }
-
-      // Final update to remove loading state
-      setMessages(prev => prev.map(m => m.id === assistantMessageId ? { ...m, isLoading: false } : m));
+      setMessages(prev => [...prev, assistantMessage]);
       audioService.playSound('receive');
-      
+
     } catch (error) {
       console.error(error);
       const userFriendlyMessage = parseApiError(error);
-      const errorMessage: Message = { id: (Date.now() + 1).toString(), role: 'error', content: userFriendlyMessage };
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'error',
+        content: userFriendlyMessage
+      };
       setMessages(prev => [...prev, errorMessage]);
       audioService.playSound('error');
     } finally {

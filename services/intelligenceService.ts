@@ -15,7 +15,6 @@
  * Future: Backend integration with Vertex AI Vector Search or Pinecone
  */
 
-import { GoogleGenAI } from "@google/genai";
 import { logFrontendError, ErrorSeverity } from "../utils/errorLogger";
 
 // Types
@@ -62,11 +61,11 @@ export interface IntelligenceQuery {
 export class IntelligenceService {
   private documents: Map<string, CodebaseDocument> = new Map();
   private embeddings: Map<string, VectorEmbedding> = new Map();
-  private ai: GoogleGenAI;
   private isIndexed: boolean = false;
 
+  // SECURITY: No API keys needed - uses Xenova Transformers for client-side embeddings
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Embedding pipeline initialized lazily in generateEmbedding()
   }
 
   /**
