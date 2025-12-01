@@ -31,6 +31,47 @@ export interface LocalLLMResponse {
   };
 }
 
+// LM Studio API response (OpenAI-compatible)
+interface LMStudioResponse {
+  choices: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+  model?: string;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+// Ollama API response
+interface OllamaResponse {
+  model?: string;
+  response?: string;
+  done?: boolean;
+  context?: number[];
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_count?: number;
+  eval_count?: number;
+}
+
+// LM Studio models list response
+interface LMStudioModelsResponse {
+  data?: Array<{
+    id: string;
+  }>;
+}
+
+// Ollama models list response
+interface OllamaModelsResponse {
+  models?: Array<{
+    name: string;
+  }>;
+}
+
 // Default configurations
 const LM_STUDIO_DEFAULT: LocalLLMConfig = {
   provider: 'lmstudio',
@@ -95,7 +136,7 @@ async function callLMStudio(
     throw new Error(`LM Studio API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as LMStudioResponse;
 
   return {
     text: data.choices[0]?.message?.content || '',
@@ -149,7 +190,7 @@ async function callOllama(
     throw new Error(`Ollama API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as OllamaResponse;
 
   return {
     text: data.response || '',
@@ -204,8 +245,8 @@ export async function getLMStudioModels(baseUrl?: string): Promise<string[]> {
   try {
     const response = await fetch(`${url}/models`);
     if (!response.ok) return [];
-    const data = await response.json();
-    return data.data?.map((m: any) => m.id) || [];
+    const data = await response.json() as LMStudioModelsResponse;
+    return data.data?.map((m) => m.id) || [];
   } catch (error) {
     logger.error('Failed to get LM Studio models', { error });
     return [];
@@ -220,8 +261,8 @@ export async function getOllamaModels(baseUrl?: string): Promise<string[]> {
   try {
     const response = await fetch(`${url}/api/tags`);
     if (!response.ok) return [];
-    const data = await response.json();
-    return data.models?.map((m: any) => m.name) || [];
+    const data = await response.json() as OllamaModelsResponse;
+    return data.models?.map((m) => m.name) || [];
   } catch (error) {
     logger.error('Failed to get Ollama models', { error });
     return [];
