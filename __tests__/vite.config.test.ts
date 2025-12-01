@@ -79,9 +79,10 @@ describe('Vite Configuration (vite.config.ts)', () => {
       expect(configContent).toContain('react(');
     });
 
-    it('should enable Fast Refresh', () => {
-      // Assert: Fast Refresh enabled for development
-      expect(configContent).toMatch(/fastRefresh:\s*true/);
+    it('should configure React plugin', () => {
+      // Assert: React plugin is properly configured with Babel options
+      expect(configContent).toContain('react({');
+      expect(configContent).toMatch(/babel:\s*isProduction/);
     });
 
     it('should have production-specific React optimizations', () => {
