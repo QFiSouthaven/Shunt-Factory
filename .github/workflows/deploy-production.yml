@@ -132,8 +132,18 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: us-east-1
         run: |
-          aws s3 sync dist/ s3://aether-shunt-production --delete --cache-control "public, max-age=31536000, immutable"
-          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
+          # CRITICAL: Split caching strategy to prevent update propagation issues
+          # 1. Deploy hashed assets with long-term caching (safe due to hash in filename)
+          aws s3 sync dist/assets/ s3://aether-shunt-production/assets/ --delete \
+            --cache-control "public, max-age=31536000, immutable"
+
+          # 2. Deploy entry points (index.html) with no caching (ensures users get updates)
+          aws s3 sync dist/ s3://aether-shunt-production/ \
+            --exclude "assets/*" --delete \
+            --cache-control "public, max-age=0, no-cache, no-store, must-revalidate"
+
+          # 3. Invalidate CloudFront cache for entry points only
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/index.html" "/"
 
       # Option 4: GitHub Pages
       - name: Deploy to GitHub Pages

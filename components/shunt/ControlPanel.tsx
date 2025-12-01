@@ -258,13 +258,13 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onShunt, onModularShunt, on
                     <>
                         <ToggleSwitch
                             id="multi-agent-mode-toggle"
-                            label="Multi-Agent Mode"
-                            checked={isMultiAgentMode || false}
-                            onChange={onMultiAgentModeChange}
-                            disabled={isLoading}
+                            label="Multi-Agent Mode (Disabled)"
+                            checked={false}
+                            onChange={() => {}} // No-op - feature disabled
+                            disabled={true}
                         />
-                        <p className="text-xs text-gray-500 pl-2 mt-2">
-                            Uses Gemini 2.0 orchestration + Gemini 2.5 Pro validation + Claude Code peer review for highest quality output.
+                        <p className="text-xs text-red-400 pl-2 mt-2">
+                            ⚠️ Temporarily disabled for security refactoring. This feature requires backend proxy integration to prevent API key exposure.
                         </p>
                     </>
                 )}

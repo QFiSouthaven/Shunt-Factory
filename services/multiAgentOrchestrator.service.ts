@@ -1,6 +1,16 @@
 // services/multiAgentOrchestrator.service.ts
 // MULTI-AGENT WORKFLOW: Orchestrates Gemini 2.0, Gemini 2.5 Pro, and Claude Code validation
 // Based on test workflow.png architecture
+//
+// ⚠️ SECURITY WARNING - DEPRECATED FOR REFACTORING ⚠️
+// This service makes direct API calls from the frontend using GoogleGenAI SDK.
+// This pattern exposes API keys in the client bundle and is flagged as a critical security issue.
+//
+// STATUS: Temporarily disabled pending backend refactoring
+// REQUIRED: Migrate all 12 workflow stages to backend proxy endpoints
+// SEE: SECURITY_AUDIT.md for details
+//
+// DO NOT RE-ENABLE until backend proxy implementation is complete.
 
 import { GoogleGenAI } from "@google/genai";
 import { ShuntAction, TokenUsage } from '../types';

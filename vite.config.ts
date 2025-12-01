@@ -26,9 +26,9 @@ export default defineConfig(({ mode }) => {
         }),
       ],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        // Inject environment variables
+        // SECURITY: Never inject actual API keys into client bundle
+        // All API calls must go through the backend proxy
+        // Only inject non-sensitive environment indicators
         'import.meta.env.VITE_APP_ENV': JSON.stringify(env.VITE_APP_ENV || mode),
       },
       resolve: {
