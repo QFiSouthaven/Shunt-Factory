@@ -152,6 +152,21 @@ This proves documentation MENTIONS error boundaries, not that the app catches er
 2. **Add integration tests** - Run actual builds and verify output artifacts
 3. **Test behavior** - Throw errors in components and verify ErrorBoundary renders fallback
 
+### ✅ Partial Fix Applied
+**Critical security meta-tests fixed** in `__tests__/vite.config.test.ts`:
+- ❌ **REMOVED:** Tests verifying API keys ARE injected (lines 357-376)
+- ✅ **ADDED:** Tests verifying API keys are NOT injected (security regression tests)
+- **New tests ensure:**
+  - `process.env.API_KEY` is NOT in define block
+  - `process.env.GEMINI_API_KEY` is NOT in define block
+  - `process.env.ANTHROPIC_API_KEY` is NOT in define block
+  - Only safe `VITE_APP_ENV` is injected
+  - Security comment warning exists in config
+
+**Result:** Test suite now prevents API key injection regressions instead of verifying they exist.
+
+**Remaining meta-tests:** Non-security meta-tests (minification, chunk splitting, etc.) still exist but pose no security risk. Can be addressed in future refactoring.
+
 **Example Replacement:**
 ```typescript
 // ❌ Bad: Meta-test
@@ -204,7 +219,7 @@ test('should catch errors with ErrorBoundary', () => {
 | API Keys in Client Bundle | CRITICAL | FIXED | Secret exposure prevented |
 | S3 Cache Misconfiguration | CRITICAL | FIXED | Update delivery restored |
 | Frontend Direct API Usage | HIGH | FIXED | 2 refactored, 1 disabled |
-| Meta-Testing | MEDIUM | DOCUMENTED | False security |
+| Meta-Testing | MEDIUM | PARTIALLY FIXED | Security tests converted |
 
 ---
 
