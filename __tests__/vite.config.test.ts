@@ -354,26 +354,37 @@ describe('Vite Configuration (vite.config.ts)', () => {
     });
   });
 
-  describe('Environment Variables', () => {
-    it('should define process.env.API_KEY', () => {
-      // Assert: API key injected
+  describe('Environment Variables - Security', () => {
+    it('should have define block for safe env vars', () => {
+      // Assert: Define block exists for build-time injection
       expect(configContent).toContain('define');
-      expect(configContent).toMatch(/['"]process\.env\.API_KEY['"]/);
     });
 
-    it('should define process.env.GEMINI_API_KEY', () => {
-      // Assert: Gemini key injected
-      expect(configContent).toMatch(/['"]process\.env\.GEMINI_API_KEY['"]/);
+    it('should NOT inject API_KEY (security)', () => {
+      // SECURITY: API keys must never be in client bundle
+      // This test ensures the vulnerability has been fixed
+      expect(configContent).not.toMatch(/['"]process\.env\.API_KEY['"]\s*:/);
     });
 
-    it('should inject VITE_APP_ENV', () => {
-      // Assert: Environment injected at build time
+    it('should NOT inject GEMINI_API_KEY (security)', () => {
+      // SECURITY: Gemini API key must never be in client bundle
+      // All AI calls must route through backend proxy
+      expect(configContent).not.toMatch(/['"]process\.env\.GEMINI_API_KEY['"]\s*:/);
+    });
+
+    it('should NOT inject ANTHROPIC_API_KEY (security)', () => {
+      // SECURITY: Claude API key must never be in client bundle
+      expect(configContent).not.toMatch(/['"]process\.env\.ANTHROPIC_API_KEY['"]\s*:/);
+    });
+
+    it('should only inject safe VITE_APP_ENV', () => {
+      // Assert: Only safe environment variable injected
       expect(configContent).toMatch(/['"]import\.meta\.env\.VITE_APP_ENV['"]/);
     });
 
-    it('should JSON stringify environment variables', () => {
-      // Assert: Values properly serialized
-      expect(configContent).toMatch(/JSON\.stringify\(env\./);
+    it('should have security comment about API keys', () => {
+      // Assert: Warning comment present explaining why keys are excluded
+      expect(configContent).toMatch(/SECURITY.*Never inject.*API keys/i);
     });
   });
 

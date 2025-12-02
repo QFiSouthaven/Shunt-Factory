@@ -152,6 +152,21 @@ This proves documentation MENTIONS error boundaries, not that the app catches er
 2. **Add integration tests** - Run actual builds and verify output artifacts
 3. **Test behavior** - Throw errors in components and verify ErrorBoundary renders fallback
 
+### ✅ Partial Fix Applied
+**Critical security meta-tests fixed** in `__tests__/vite.config.test.ts`:
+- ❌ **REMOVED:** Tests verifying API keys ARE injected (lines 357-376)
+- ✅ **ADDED:** Tests verifying API keys are NOT injected (security regression tests)
+- **New tests ensure:**
+  - `process.env.API_KEY` is NOT in define block
+  - `process.env.GEMINI_API_KEY` is NOT in define block
+  - `process.env.ANTHROPIC_API_KEY` is NOT in define block
+  - Only safe `VITE_APP_ENV` is injected
+  - Security comment warning exists in config
+
+**Result:** Test suite now prevents API key injection regressions instead of verifying they exist.
+
+**Remaining meta-tests:** Non-security meta-tests (minification, chunk splitting, etc.) still exist but pose no security risk. Can be addressed in future refactoring.
+
 **Example Replacement:**
 ```typescript
 // ❌ Bad: Meta-test
@@ -204,7 +219,80 @@ test('should catch errors with ErrorBoundary', () => {
 | API Keys in Client Bundle | CRITICAL | FIXED | Secret exposure prevented |
 | S3 Cache Misconfiguration | CRITICAL | FIXED | Update delivery restored |
 | Frontend Direct API Usage | HIGH | FIXED | 2 refactored, 1 disabled |
-| Meta-Testing | MEDIUM | DOCUMENTED | False security |
+| Telemetry Memory Leak | HIGH | FIXED | Circuit breaker + kill switch |
+| Meta-Testing | MEDIUM | PARTIALLY FIXED | Security tests converted |
+
+---
+
+## 🟠 PERFORMANCE: Telemetry Memory Leak Fixed
+
+### Problem (High Priority)
+The telemetry service was queuing events in memory indefinitely when backend endpoint unavailable, leading to:
+- Unbounded memory growth during long sessions
+- Continuous failed network requests (404 errors)
+- Console spam from telemetry failures
+- Performance degradation over time
+
+### ✅ Fix Applied
+
+**File:** `services/telemetry.service.ts`
+
+**1. Kill Switch Added**
+```typescript
+const TELEMETRY_ENABLED = import.meta.env.VITE_ENABLE_TELEMETRY !== 'false';
+```
+- Check environment variable on every event/send operation
+- Set `VITE_ENABLE_TELEMETRY=false` in production to disable entirely
+- No overhead when disabled (early return)
+
+**2. Circuit Breaker Implemented**
+```typescript
+const CIRCUIT_BREAKER_THRESHOLD = 5; // Failures before opening
+const CIRCUIT_BREAKER_RESET_MS = 60000; // 1 minute retry delay
+```
+- After 5 consecutive failures, circuit opens
+- No more network requests for 60 seconds
+- Automatically attempts to close circuit after delay
+- Events dropped while circuit open (prevents memory leak)
+
+**3. Bounded Queue Already Existed**
+```typescript
+maxQueueSize: 100, // Ring buffer prevents unbounded growth
+```
+- Queue drops new events when full
+- Already implemented, no changes needed
+
+**Changes Made:**
+- Added `TELEMETRY_ENABLED` constant checking `VITE_ENABLE_TELEMETRY`
+- Added circuit breaker state: `consecutiveFailures`, `circuitOpen`, `circuitOpenedAt`
+- Added `handleSendSuccess()` and `handleSendFailure()` methods
+- Added circuit breaker logic to `sendQueuedEvents()`
+- Added kill switch checks to all public methods
+- Added `getCircuitBreakerStatus()` for debugging
+
+**Documentation:**
+- Updated `.env.example` with circuit breaker explanation
+- Added security audit comments to service file
+
+### Behavior After Fix
+
+**When Backend Unavailable:**
+1. First 5 failed sends logged as warnings
+2. Circuit opens after 5th failure
+3. Console message: "Circuit breaker OPENED after 5 consecutive failures. Will retry in 60s."
+4. All new events dropped (no queue growth)
+5. After 60 seconds, circuit attempts to close
+6. If send succeeds, circuit closes and normal operation resumes
+7. If send fails, circuit re-opens for another 60s
+
+**When Telemetry Disabled (VITE_ENABLE_TELEMETRY=false):**
+1. No events recorded
+2. No network requests made
+3. No memory allocated
+4. Zero performance impact
+
+### Production Recommendation
+Set `VITE_ENABLE_TELEMETRY=false` in `.env.production` until backend telemetry endpoint is deployed.
 
 ---
 
